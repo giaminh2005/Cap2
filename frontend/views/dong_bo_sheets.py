@@ -12,7 +12,7 @@ from common import API_BASE, note, page_header
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools"))
 
-page_header("☁️", "Google Sheets", "Gửi lịch sử lượt khách và số người trên cầu sang Google Sheets để chia sẻ báo cáo")
+page_header("Hệ thống · Chia sẻ dữ liệu", "Google Sheets", "Gửi lịch sử lượt khách và số liệu tổng hợp sang Google Sheets để chia sẻ báo cáo.")
 
 sheet_id = os.environ.get("GOOGLE_SHEETS_ID", "")
 creds_path = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_FILE", "")
@@ -25,7 +25,7 @@ if not sheet_id or not creds_path:
 with st.container(border=True):
     st.markdown(f"**Sheet:** [{sheet_id}](https://docs.google.com/spreadsheets/d/{sheet_id}/edit)")
     st.caption(f"Tệp khóa: {creds_path}")
-    if st.button("🔄 Đồng bộ ngay", type="primary"):
+    if st.button("Đồng bộ ngay", type="primary"):
         try:
             import google_sheets_sync
         except ImportError as e:

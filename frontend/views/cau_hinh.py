@@ -8,9 +8,9 @@ from datetime import time
 import pandas as pd
 import streamlit as st
 
-from common import ApiError, api_put, fmt_time, kpi, kpi_row, note, page_header, safe_get
+from common import section, ApiError, api_put, fmt_time, kpi, kpi_row, note, page_header, safe_get
 
-page_header("⚙️", "Ngưỡng & giờ hoạt động", "Chỉ quản trị viên được thay đổi · mọi thay đổi đều được ghi nhật ký")
+page_header("Hệ thống · Quy tắc cảnh báo", "Ngưỡng & giờ hoạt động", "Chỉ quản trị viên được thay đổi. Mọi thay đổi đều được ghi vào nhật ký.")
 
 cfg = safe_get("/config")
 if cfg is None:
@@ -50,7 +50,7 @@ with st.form("cfg"):
 note("Ngoài giờ hoạt động hệ thống không gửi tin nhắn cảnh báo Vàng và đoàn khách; "
      "cảnh báo Đỏ và mất tín hiệu camera vẫn luôn được gửi.")
 
-st.markdown("#### Nhật ký thay đổi")
+section("Nhật ký thay đổi")
 log = safe_get("/audit", {"limit": 300}) or []
 if log:
     st.dataframe(pd.DataFrame([{"Thời gian": fmt_time(e["timestamp"]), "Người thực hiện": e["username"],

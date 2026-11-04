@@ -78,6 +78,20 @@ pip install "opencv-python>=4.9,<5"
 - Kết quả có độ tin cậy dưới 70% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
 - Hệ thống không lưu ảnh hay đặc trưng khuôn mặt; khung hình chỉ xử lý trong bộ nhớ.
 
+## Báo cáo ngày tự động và chỉ số KPI
+
+- Sau **giờ đóng cửa** (trang *Ngưỡng & giờ hoạt động*), backend tự lập báo cáo ngày, lưu lại và gửi tin tóm tắt kèm tệp **PDF** qua Telegram cho danh sách người nhận. Nếu máy tắt lúc đóng cửa, lần chạy sau sẽ lập bù ngày hôm trước. Xem và tải lại ở trang *Báo cáo định kỳ*.
+- Báo cáo có các chỉ số Sprint 0: **O1** số phút vượt sức chứa, **O4** % sự cố xử lý trong 3 phút, **O5** % cảnh báo sai (người trực bấm **Báo sai** ở trang *Trực ca & sự cố*), **O8** chênh lệch lượt vào / cuống vé; kèm **biểu đồ nhiệt giờ × thứ**.
+
+## Đo độ chính xác để nghiệm thu
+
+| Script | Yêu cầu | Cách chạy |
+|---|---|---|
+| `tools/eval_counting.py` | NFR-02, O2: sai số đếm ≤ 15% (MVP), ≤ 10% (nghiệm thu) trên ≥ 3 video | `python tools/eval_counting.py --truth video_thu/dem_tay.csv` |
+| `tools/eval_demographics.py` | FR-09: giới tính ≥ 85%, nhóm tuổi ≥ 55% (±1 nhóm ≥ 85%); NFR-08: chênh lệch giữa các nhóm ≤ 5 điểm % | `python tools/eval_demographics.py --dataset fairface --images D:/fairface --labels D:/fairface/fairface_label_val.csv --limit 2000` |
+
+Tệp đếm tay cho `eval_counting.py` có các cột `video,true_in,true_out,line` (hoặc `video,second,true_count` với `--presence`). Mỗi script in bảng kết quả và lưu thêm tệp `.md`, `.csv` để dán vào báo cáo.
+
 ## Kiểm thử trước khi tạo Pull Request
 
 ```bash

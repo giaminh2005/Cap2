@@ -7,12 +7,12 @@ import streamlit as st
 
 from common import ROLE_VI, ApiError, api_post, api_put, badge, current_user, fmt_time, note, page_header, safe_get
 
-page_header("👤", "Tài khoản", "Tạo, khóa và phân quyền tài khoản theo 3 vai trò")
+page_header("Hệ thống · Phân quyền", "Tài khoản", "Tạo, khóa và phân quyền tài khoản theo ba vai trò.")
 
 ROLE_FROM_VI = {v: k for k, v in ROLE_VI.items()}
 
 with st.form("new", clear_on_submit=True):
-    st.markdown("**Tạo tài khoản mới**")
+    st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Tạo tài khoản mới</div>', unsafe_allow_html=True)
     c1, c2, c3, c4 = st.columns(4)
     username = c1.text_input("Tên đăng nhập", placeholder="vd: truc_bac")
     full_name = c2.text_input("Họ tên")

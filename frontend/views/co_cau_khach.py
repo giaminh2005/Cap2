@@ -16,7 +16,7 @@ from common import (AGE_ORDER, COLORS, HAS_PLOTLY, fmt_int, kpi, kpi_row, local_
 if HAS_PLOTLY:
     import plotly.graph_objects as go
 
-page_header("👥", "Cơ cấu khách", "Giới tính, nhóm tuổi và tỷ lệ khách trong nước / nước ngoài của khách vào cầu")
+page_header("Phân tích · Du khách", "Cơ cấu khách", "Giới tính, nhóm tuổi và tỷ lệ khách trong nước, nước ngoài của khách vào cầu.")
 
 today = local_today()
 picked = st.date_input("Khoảng thời gian", value=(today - timedelta(days=6), today), format="DD/MM/YYYY")
@@ -59,18 +59,18 @@ def donut(labels, values, colors, title):
 if HAS_PLOTLY:
     c1, c2, c3 = st.columns(3)
     with c1, st.container(border=True):
-        st.markdown("**Giới tính**")
+        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Giới tính</div>', unsafe_allow_html=True)
         st.plotly_chart(donut(["Nữ", "Nam"], [d["gender"]["Woman"], d["gender"]["Man"]],
                               [COLORS["primary"], COLORS["blue"]], "Giới tính"), width="stretch")
     with c2, st.container(border=True):
-        st.markdown("**Trong nước / Nước ngoài** (ước lượng)")
+        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Trong nước / Nước ngoài · ước lượng</div>', unsafe_allow_html=True)
         o = d["origin"]
         unknown_origin = ident - o["Trong nuoc"] - o["Nuoc ngoai"]
         st.plotly_chart(donut(["Trong nước", "Nước ngoài", "Chưa rõ"], [o["Trong nuoc"], o["Nuoc ngoai"], unknown_origin],
                               [COLORS["moss"], COLORS["ochre"], "#CFC6BA"], "Trong nước / Nước ngoài"),
                         width="stretch")
     with c3, st.container(border=True):
-        st.markdown("**Nhóm tuổi**")
+        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Nhóm tuổi</div>', unsafe_allow_html=True)
         ages = [a for a in AGE_ORDER if d["age_range"].get(a)]
         fig = go.Figure(go.Bar(x=[d["age_range"][a] for a in ages], y=ages, orientation="h",
                                marker_color=COLORS["ochre"]))
@@ -78,7 +78,7 @@ if HAS_PLOTLY:
         st.plotly_chart(style_fig(fig, 300, legend=False), width="stretch")
 
     with st.container(border=True):
-        st.markdown("**Theo giờ trong ngày** (gộp các ngày đã chọn)")
+        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Theo giờ trong ngày · gộp các ngày đã chọn</div>', unsafe_allow_html=True)
         h = pd.DataFrame(d["by_hour"])
         if not h.empty:
             h["Giờ"] = h["hour"].map(lambda x: f"{x:02d}h")

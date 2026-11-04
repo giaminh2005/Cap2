@@ -76,8 +76,12 @@ def _deliver(report_id: int, text: str, pdf: bytes, filename: str):
         rep = db.query(DailyReport).filter(DailyReport.id == report_id).first()
         ok = sum(1 for x in results if x["status"] == "ok")
         rep.sent_at = datetime.utcnow()
-        rep.delivery = (f"Đã gửi {ok}/{len(results)} tin" if results
-                        else "Không có người nhận (thêm ở trang Người nhận cảnh báo)")
+        if not results:
+            rep.delivery = "Không có người nhận (thêm ở trang Người nhận cảnh báo)"
+        elif ok == 0:
+            rep.delivery = f"Chưa gửi được: {results[0]['status']}"
+        else:
+            rep.delivery = f"Đã gửi {ok}/{len(results)} tin"
         db.commit()
 
 

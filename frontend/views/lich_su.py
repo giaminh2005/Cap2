@@ -11,7 +11,7 @@ import streamlit as st
 from common import (AGE_ORDER, GENDER_VI, ORIGIN_VI, fmt_int, fmt_time, kpi, kpi_row, local_today,
                     page_header, safe_get)
 
-page_header("🗂️", "Lịch sử lượt khách", "Tra cứu, lọc và xuất hồ sơ nhận diện của từng lượt khách vào cầu")
+page_header("Phân tích · Hồ sơ lượt khách", "Lịch sử lượt khách", "Tra cứu, lọc và xuất nhãn nhận diện của từng lượt khách vào cầu.")
 
 today = local_today()
 with st.container(border=True):
@@ -58,5 +58,5 @@ kpi_row([
     kpi("Nước ngoài", fmt_int((df["Nguồn khách"] == "Nước ngoài").sum()), "ước lượng", "warn"),
 ])
 st.dataframe(df, width="stretch", hide_index=True, height=480)
-st.download_button("⬇️ Xuất CSV", data=df.to_csv(index=False).encode("utf-8-sig"),
+st.download_button("Xuất CSV", data=df.to_csv(index=False).encode("utf-8-sig"),
                    file_name=f"luot_khach_{picked[0]}_{picked[1]}.csv", mime="text/csv")

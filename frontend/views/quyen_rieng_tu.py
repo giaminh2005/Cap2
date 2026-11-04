@@ -5,9 +5,9 @@ Phu trach: KHANH.
 
 import streamlit as st
 
-from common import ApiError, api_post, fmt_int, fmt_time, has_role, kpi, kpi_row, note, page_header, safe_get
+from common import section, ApiError, api_post, fmt_int, fmt_time, has_role, kpi, kpi_row, note, page_header, safe_get
 
-page_header("🛡️", "Quyền riêng tư", "Cam kết xử lý dữ liệu theo Nghị định 13/2023/NĐ-CP và Luật Bảo vệ dữ liệu cá nhân 2025")
+page_header("Hệ thống · Dữ liệu cá nhân", "Quyền riêng tư", "Cam kết xử lý dữ liệu theo Nghị định 13/2023/NĐ-CP và Luật Bảo vệ dữ liệu cá nhân 2025.")
 
 s = safe_get("/privacy/summary")
 if s:
@@ -29,13 +29,13 @@ st.markdown("""
 - Số liệu và nhật ký sự cố được lưu tối thiểu **24 tháng** (BRULE-09).
 """)
 
-st.markdown("#### Bảng thông báo song ngữ đặt tại hai đầu cầu")
+section("Bảng thông báo song ngữ đặt tại hai đầu cầu")
 st.markdown(
     """<div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-    <div class="sc-kpi primary"><b>KHU VỰC CÓ CAMERA AI ĐẾM LƯỢNG KHÁCH</b><br>
+    <div class="sc-item" style="border-top:2px solid var(--oxblood)"><b>KHU VỰC CÓ CAMERA AI ĐẾM LƯỢNG KHÁCH</b><br>
     Camera chỉ đếm số người và ước lượng giới tính, độ tuổi để bảo vệ di tích và an toàn của quý khách.
     Hệ thống không lưu hình ảnh khuôn mặt. Đơn vị quản lý: Trung tâm Quản lý Bảo tồn Di sản Văn hóa Hội An.</div>
-    <div class="sc-kpi primary"><b>AI CAMERA VISITOR COUNTING IN OPERATION</b><br>
+    <div class="sc-item" style="border-top:2px solid var(--oxblood)"><b>AI CAMERA VISITOR COUNTING IN OPERATION</b><br>
     Cameras only count visitors and estimate gender and age group to protect the heritage site and your safety.
     No facial images are stored. Operator: Hoi An Centre for Cultural Heritage Management and Preservation.</div>
     </div>""",
@@ -43,7 +43,7 @@ st.markdown(
 )
 
 if has_role("admin"):
-    st.markdown("#### Xóa dữ liệu cũ")
+    section("Xóa dữ liệu cũ")
     with st.form("purge"):
         days = st.number_input("Xóa dữ liệu cũ hơn (ngày)", min_value=730, max_value=3650, value=730, step=30)
         confirm = st.checkbox("Tôi hiểu thao tác này không thể hoàn tác")

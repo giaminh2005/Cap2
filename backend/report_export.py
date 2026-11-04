@@ -84,6 +84,13 @@ def to_excel(r: dict) -> bytes:
 
 def to_pdf(r: dict) -> bytes:
     from fpdf import FPDF
+    from fpdf.fonts import FontFace
+
+    try:
+        from .timeutil import local_now
+        made_at = local_now()
+    except ImportError:
+        made_at = datetime.now()
 
     reg, bold = _first(FONT_REGULAR), _first(FONT_BOLD)
     pdf = FPDF(format="A4")
@@ -97,25 +104,41 @@ def to_pdf(r: dict) -> bytes:
         family = "helvetica"
         r = _strip_accents(r, unicodedata)
     pdf.add_page()
-    pdf.set_font(family, "B", 16)
-    pdf.cell(0, 9, "BÁO CÁO LƯỢNG KHÁCH CHÙA CẦU HỘI AN" if reg else "BAO CAO LUONG KHACH CHUA CAU HOI AN",
+    pdf.set_draw_color(168, 129, 47)
+    pdf.set_text_color(168, 129, 47)
+    pdf.set_font(family, "B", 8)
+    pdf.cell(0, 5, "TRUNG TÂM QUẢN LÝ BẢO TỒN DI SẢN VĂN HÓA HỘI AN · SMARTCAU AI" if reg else "SMARTCAU AI",
              new_x="LMARGIN", new_y="NEXT")
-    pdf.set_font(family, "", 10)
-    pdf.cell(0, 6, f"{PERIOD_VI[r['period']]} {r['date_from']} → {r['date_to']} · Lập lúc {datetime.now():%H:%M %d/%m/%Y} · SmartCau AI",
-             new_x="LMARGIN", new_y="NEXT")
-    pdf.ln(3)
+    pdf.set_text_color(31, 26, 23)
+    pdf.set_font(family, "B", 17)
+    pdf.cell(0, 10, "Báo cáo lượng khách Chùa Cầu" if reg else "Bao cao luong khach Chua Cau", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_font(family, "", 9.5)
+    pdf.set_text_color(119, 107, 95)
+    d1, d2 = r["date_from"], r["date_to"]
+    pdf.cell(0, 6, f"{PERIOD_VI[r['period']]} {d1[8:]}/{d1[5:7]}/{d1[:4]} – {d2[8:]}/{d2[5:7]}/{d2[:4]} · "
+                   f"lập lúc {made_at:%H:%M %d/%m/%Y}", new_x="LMARGIN", new_y="NEXT")
+    pdf.set_line_width(0.4)
+    y = pdf.get_y() + 2
+    pdf.line(pdf.l_margin, y, pdf.l_margin + 18, y)
+    pdf.set_draw_color(227, 217, 200)
+    pdf.set_line_width(0.2)
+    pdf.line(pdf.l_margin + 20, y, pdf.w - pdf.r_margin, y)
+    pdf.ln(7)
+    head = FontFace(family=family, emphasis="BOLD", color=(31, 26, 23), fill_color=(239, 231, 217))
     for name, df in report_tables(r).items():
         if df.empty:
             continue
         pdf.set_font(family, "B", 12)
-        pdf.set_fill_color(142, 42, 31)
-        pdf.set_text_color(255, 255, 255)
-        pdf.cell(0, 8, f"  {name}", fill=True, new_x="LMARGIN", new_y="NEXT")
-        pdf.set_text_color(0, 0, 0)
-        pdf.set_font(family, "", 10)
+        pdf.set_text_color(125, 35, 24)
+        pdf.cell(0, 8, name, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_text_color(31, 26, 23)
+        pdf.set_font(family, "", 9.5)
+        pdf.set_draw_color(227, 217, 200)
+        pdf.set_fill_color(255, 255, 255)
         widths = (0.6, 3, 1.8, 1.2) if name == "Chỉ số KPI" else tuple([3] + [1.4] * (len(df.columns) - 1))
         with pdf.table(col_widths=widths, text_align="LEFT",
-                       line_height=6, first_row_as_headings=True) as table:
+                       line_height=6, first_row_as_headings=True, headings_style=head,
+                       borders_layout="HORIZONTAL_LINES", padding=1.5) as table:
             table.row([str(c) for c in df.columns])
             for _, row in df.iterrows():
                 table.row([str(v) for v in row.values])

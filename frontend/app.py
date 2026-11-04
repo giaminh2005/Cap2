@@ -19,7 +19,7 @@ Bang phan cong trang (docs/PHAN_CONG.md):
 
 import streamlit as st
 
-st.set_page_config(page_title="SmartCau AI · Chùa Cầu", page_icon="🏯", layout="wide",
+st.set_page_config(page_title="SmartCau · Chùa Cầu Hội An", page_icon=":material/temple_buddhist:", layout="wide",
                    initial_sidebar_state="expanded")
 
 from common import (API_BASE, ROLE_VI, api_is_up, apply_theme, change_password_form,  # noqa: E402
@@ -34,7 +34,8 @@ user = current_user()
 role = user["role"]
 
 if user.get("must_change_password"):
-    st.markdown('<div class="sc-title">Đổi mật khẩu</div>', unsafe_allow_html=True)
+    from common import page_header
+    page_header("Bảo mật tài khoản", "Đổi mật khẩu", "Mật khẩu mới phải có ít nhất 6 ký tự.")
     change_password_form(forced=True)
     if st.button("Đăng xuất"):
         logout()
@@ -42,20 +43,20 @@ if user.get("must_change_password"):
 
 ALL, MANAGER, ADMIN = ("admin", "quan_ly", "nguoi_truc"), ("admin", "quan_ly"), ("admin",)
 PAGES = [
-    ("Vận hành", "views/tong_quan.py", "Tổng quan", "🏯", ALL),
-    ("Vận hành", "views/truc_ca.py", "Trực ca & sự cố", "🚨", ALL),
-    ("Vận hành", "views/bang_led.py", "Bảng LED tại chỗ", "🪧", ALL),
-    ("Vận hành", "views/luot_qua_cau.py", "Lượt qua cầu", "🌉", ALL),
-    ("Vận hành", "views/doi_chieu_ve.py", "Đối chiếu vé", "🎫", ALL),
-    ("Phân tích", "views/co_cau_khach.py", "Cơ cấu khách", "👥", MANAGER),
-    ("Phân tích", "views/lich_su.py", "Lịch sử lượt khách", "🗂️", MANAGER),
-    ("Phân tích", "views/bao_cao.py", "Báo cáo định kỳ", "📊", MANAGER),
-    ("Hệ thống", "views/camera.py", "Camera", "📷", MANAGER),
-    ("Hệ thống", "views/cau_hinh.py", "Ngưỡng & giờ hoạt động", "⚙️", ADMIN),
-    ("Hệ thống", "views/nguoi_nhan.py", "Người nhận cảnh báo", "📨", ADMIN),
-    ("Hệ thống", "views/tai_khoan.py", "Tài khoản", "👤", ADMIN),
-    ("Hệ thống", "views/quyen_rieng_tu.py", "Quyền riêng tư", "🛡️", MANAGER),
-    ("Hệ thống", "views/dong_bo_sheets.py", "Google Sheets", "☁️", ADMIN),
+    ("Vận hành", "views/tong_quan.py", "Tổng quan", ":material/space_dashboard:", ALL),
+    ("Vận hành", "views/truc_ca.py", "Trực ca & sự cố", ":material/notifications_active:", ALL),
+    ("Vận hành", "views/bang_led.py", "Bảng LED tại chỗ", ":material/traffic:", ALL),
+    ("Vận hành", "views/luot_qua_cau.py", "Lượt qua cầu", ":material/swap_horiz:", ALL),
+    ("Vận hành", "views/doi_chieu_ve.py", "Đối chiếu vé", ":material/confirmation_number:", ALL),
+    ("Phân tích", "views/co_cau_khach.py", "Cơ cấu khách", ":material/groups:", MANAGER),
+    ("Phân tích", "views/lich_su.py", "Lịch sử lượt khách", ":material/history:", MANAGER),
+    ("Phân tích", "views/bao_cao.py", "Báo cáo định kỳ", ":material/insert_chart:", MANAGER),
+    ("Hệ thống", "views/camera.py", "Camera", ":material/videocam:", MANAGER),
+    ("Hệ thống", "views/cau_hinh.py", "Ngưỡng & giờ hoạt động", ":material/tune:", ADMIN),
+    ("Hệ thống", "views/nguoi_nhan.py", "Người nhận cảnh báo", ":material/forward_to_inbox:", ADMIN),
+    ("Hệ thống", "views/tai_khoan.py", "Tài khoản", ":material/manage_accounts:", ADMIN),
+    ("Hệ thống", "views/quyen_rieng_tu.py", "Quyền riêng tư", ":material/shield:", MANAGER),
+    ("Hệ thống", "views/dong_bo_sheets.py", "Google Sheets", ":material/table_view:", ADMIN),
 ]
 
 nav = {}
@@ -71,16 +72,15 @@ page = st.navigation(nav, expanded=True)
 
 with st.sidebar:
     online = api_is_up()
-    dot = "#2E7D4F" if online else "#B3261E"
-    st.markdown(f'<div class="sc-user"><b>{user.get("full_name") or user["username"]}</b><br>'
-                f'<span style="color:var(--muted)">{ROLE_VI.get(role, role)} · @{user["username"]}</span><br>'
-                f'<span style="color:{dot}">●</span> '
-                f'{"Đã kết nối máy chủ" if online else "Mất kết nối máy chủ"}</div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="sc-user"><div style="font-weight:500">{user.get("full_name") or user["username"]}</div>'
+                f'<div class="role">{ROLE_VI.get(role, role)} · @{user["username"]}</div>'
+                f'<div class="role" style="margin-top:6px"><span class="dot" style="background:'
+                f'{"#7FB08A" if online else "#D9826F"}"></span>{"Đã kết nối máy chủ" if online else "Mất kết nối máy chủ"}</div></div>',
+                unsafe_allow_html=True)
     c1, c2 = st.columns(2)
     with c1.popover("Mật khẩu", width="stretch"):
         change_password_form()
     if c2.button("Đăng xuất", width="stretch"):
         logout()
-    st.caption(f"API: {API_BASE}")
 
 page.run()

@@ -10,13 +10,13 @@ from datetime import timedelta
 import pandas as pd
 import streamlit as st
 
-from common import (COLORS, HAS_PLOTLY, ApiError, api_post, fmt_int, has_role, kpi, kpi_row, local_today,
+from common import (section, COLORS, HAS_PLOTLY, ApiError, api_post, fmt_int, has_role, kpi, kpi_row, local_today,
                     note, page_header, safe_get, style_fig)
 
 if HAS_PLOTLY:
     import plotly.graph_objects as go
 
-page_header("🌉", "Lượt qua cầu", "Số khách trên cầu từ 2 camera chân cầu và thống kê lượt vào theo thời gian")
+page_header("Vận hành · Hai camera chân cầu", "Lượt qua cầu", "Số khách đang trên cầu tính từ hai camera chân cầu, và lượt vào cầu theo giờ, ngày, tháng, năm.")
 
 
 @st.fragment(run_every=2)
@@ -48,7 +48,7 @@ if has_role("admin", "quan_ly"):
             except ApiError as e:
                 st.error(str(e))
 
-st.markdown("#### Thống kê lượt vào cầu")
+section("Thống kê lượt vào cầu")
 GROUPS = {"Theo giờ": "hour", "Theo ngày": "day", "Theo tháng": "month", "Theo năm": "year"}
 today = local_today()
 with st.container(border=True):
@@ -104,5 +104,5 @@ with st.container(border=True):
 table = df[["Thời gian", "entries", "exits", "entries_cam1", "entries_cam2"]].rename(columns={
     "entries": "Lượt vào", "exits": "Lượt ra", "entries_cam1": "Vào ở chân cầu 1", "entries_cam2": "Vào ở chân cầu 2"})
 st.dataframe(table, width="stretch", hide_index=True)
-st.download_button("⬇️ Xuất CSV", data=table.to_csv(index=False).encode("utf-8-sig"),
+st.download_button("Xuất CSV", data=table.to_csv(index=False).encode("utf-8-sig"),
                    file_name=f"luot_qua_cau_{group}_{picked[0]}_{picked[1]}.csv", mime="text/csv")

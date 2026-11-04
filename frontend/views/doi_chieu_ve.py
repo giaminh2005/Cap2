@@ -14,7 +14,7 @@ from common import (COLORS, HAS_PLOTLY, ApiError, api_delete, api_post, fmt_int,
 if HAS_PLOTLY:
     import plotly.graph_objects as go
 
-page_header("🎫", "Đối chiếu vé", "So sánh số cuống vé thu tại Chùa Cầu với lượt vào lòng cầu do camera đếm")
+page_header("Vận hành · Bộ phận soát vé", "Đối chiếu vé", "So sánh số cuống vé thu tại Chùa Cầu với lượt vào lòng cầu do camera đếm.")
 note("Theo BRULE-08: chỉ so <b>lượt vào lòng cầu</b> (2 camera chân cầu), không dùng lượt qua mặt tiền. "
      "Kết quả chỉ dùng để điều phối lực lượng soát vé, <b>không dùng làm bằng chứng xử phạt</b>. "
      "Tỷ lệ chênh lệch = (lượt vào − số vé) / lượt vào × 100%.")
@@ -24,7 +24,7 @@ day_s = day.isoformat()
 
 left, right = st.columns([1, 1])
 with left, st.container(border=True):
-    st.markdown("**Nhập số cuống vé**")
+    st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Nhập số cuống vé</div>', unsafe_allow_html=True)
     with st.form("ticket", clear_on_submit=True):
         mode = st.radio("Nhập theo", ["Cả ngày", "Từng giờ"], horizontal=True)
         hour = st.number_input("Giờ (0–23)", 0, 23, 8, help="Chỉ dùng khi nhập theo từng giờ")
@@ -39,7 +39,7 @@ with left, st.container(border=True):
             st.error(str(e))
 
 with right, st.container(border=True):
-    st.markdown("**Nhập từ tệp CSV / Excel**")
+    st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Nhập từ tệp CSV / Excel</div>', unsafe_allow_html=True)
     st.caption("Các cột: `date` (YYYY-MM-DD), `hour` (để trống = cả ngày), `ticket_count`.")
     up = st.file_uploader("Chọn tệp", type=["csv", "xlsx"], label_visibility="collapsed")
     if up is not None:
@@ -78,7 +78,7 @@ if rows:
     df = pd.DataFrame(rows)
     df["Giờ"] = df["hour"].map(lambda h: f"{h:02d}h")
     with st.container(border=True):
-        st.markdown("**Theo giờ trong ngày**")
+        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Theo giờ trong ngày</div>', unsafe_allow_html=True)
         if HAS_PLOTLY:
             fig = go.Figure()
             fig.add_bar(x=df["Giờ"], y=df["entries"], name="Lượt vào cầu", marker_color=COLORS["primary"])

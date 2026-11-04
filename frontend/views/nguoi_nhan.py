@@ -7,13 +7,13 @@ import streamlit as st
 
 from common import ApiError, api_delete, api_post, api_put, badge, note, page_header, safe_get
 
-page_header("📨", "Người nhận cảnh báo", "Danh sách người trực và quản lý nhận tin nhắn khi có cảnh báo")
+page_header("Hệ thống · Thông báo", "Người nhận cảnh báo", "Người trực và cán bộ quản lý nhận tin nhắn cảnh báo và báo cáo ngày.")
 
 CHANNELS = {"Telegram": "telegram", "Zalo OA (chưa hỗ trợ)": "zalo", "SMS (chưa hỗ trợ)": "sms",
             "Email (chưa hỗ trợ)": "email"}
 
 with st.form("add", clear_on_submit=True):
-    st.markdown("**Thêm người nhận**")
+    st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Thêm người nhận</div>', unsafe_allow_html=True)
     c1, c2, c3 = st.columns([2, 1.2, 2])
     name = c1.text_input("Họ tên / vai trò", placeholder="vd: Người trực đầu cầu Bắc")
     channel = c2.selectbox("Kênh", list(CHANNELS))

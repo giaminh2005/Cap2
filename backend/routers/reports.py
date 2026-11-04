@@ -96,17 +96,15 @@ def report_summary(period: str = "day", date: str = "", db: Session = Depends(ge
     real = [i for i in incidents if not i.false_alarm]
     within = [i for i in real if i.acked_at and (i.acked_at - i.opened_at).total_seconds() <= HANDLE_TARGET_SEC]
     false_n = len(incidents) - len(real)
-    from .tickets import TicketCount
-    tickets = db.query(TicketCount).filter(TicketCount.date >= start.strftime("%Y-%m-%d"),
-                                           TicketCount.date <= end.strftime("%Y-%m-%d")).all()
-    daily_t = {t.date: t.ticket_count for t in tickets if t.hour is None}
-    hourly_t = {}
-    for t in tickets:
-        if t.hour is not None and t.date not in daily_t:
-            hourly_t[t.date] = hourly_t.get(t.date, 0) + t.ticket_count
-    ticket_total = sum(daily_t.values()) + sum(hourly_t.values())
-    ticket_days = set(daily_t) | set(hourly_t)
-    entries_on_ticket_days = sum(n for d, n in by_day.items() if d in ticket_days)
+    from .tickets import TicketCount, reconciliation
+    ticket_days = sorted({d for (d,) in db.query(TicketCount.date).filter(
+        TicketCount.date >= start.strftime("%Y-%m-%d"), TicketCount.date <= end.strftime("%Y-%m-%d")).all()})
+    o8_entries = o8_tickets = 0
+    for d in ticket_days:          # cung cach tinh voi trang Doi chieu ve (chi so cac gio da nhap ve)
+        rec = reconciliation(date=d, db=db)
+        if rec["tickets_sold"] is not None:
+            o8_entries += rec["compared_entries"]
+            o8_tickets += rec["tickets_sold"]
     kpis = {
         "o1_minutes_over": len(over_minutes),
         "o1_minutes_per_day": round(len(over_minutes) / span, 1),
@@ -114,8 +112,7 @@ def report_summary(period: str = "day", date: str = "", db: Session = Depends(ge
         "o4_real_incidents": len(real),
         "o5_false_alarm_pct": round(false_n / len(incidents) * 100, 1) if incidents else None,
         "o5_false_alarms": false_n,
-        "o8_gap_rate_pct": (round((entries_on_ticket_days - ticket_total) / entries_on_ticket_days * 100, 1)
-                            if ticket_days and entries_on_ticket_days else None),
+        "o8_gap_rate_pct": round((o8_entries - o8_tickets) / o8_entries * 100, 1) if o8_entries else None,
         "capacity": cap,
     }
 

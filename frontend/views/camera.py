@@ -7,9 +7,9 @@ mat tin hieu), nguon hinh, toc do xu ly, vach ke dang dung, huong dan chay.
 
 import streamlit as st
 
-from common import badge, fmt_time, note, page_header, safe_get
+from common import section, badge, fmt_time, note, page_header, safe_get
 
-page_header("📷", "Camera", "Trạng thái 2 camera chân cầu · tự cập nhật mỗi 5 giây")
+page_header("Hệ thống · Nguồn hình", "Camera", "Trạng thái hai camera chân cầu, tự cập nhật mỗi 5 giây.")
 
 
 @st.fragment(run_every=5)
@@ -20,11 +20,12 @@ def cams():
     cols = st.columns(2)
     for col, c in zip(cols, rows):
         with col, st.container(border=True):
-            st.markdown(f"### Camera chân cầu {c['camera_id']}")
+            st.markdown(f'<div class="sc-eyebrow">Chân cầu {c["camera_id"]}</div>'
+                        f'<div class="sc-title" style="font-size:1.7rem">Camera {c["camera_id"]}</div>', unsafe_allow_html=True)
             if c["online"]:
-                st.markdown(badge(f"● Đang hoạt động · {c['fps']} khung hình/giây", "ok"), unsafe_allow_html=True)
+                st.markdown(badge(f"Đang hoạt động · {c['fps']} khung hình/giây", "ok"), unsafe_allow_html=True)
             elif c["last_seen"]:
-                st.markdown(badge(f"■ Mất tín hiệu từ {fmt_time(c['last_seen'], '%H:%M:%S %d/%m')}", "danger"),
+                st.markdown(badge(f"Mất tín hiệu từ {fmt_time(c['last_seen'], '%H:%M:%S %d/%m')}", "danger"),
                             unsafe_allow_html=True)
             else:
                 st.markdown(badge("Chưa từng kết nối", "muted"), unsafe_allow_html=True)
@@ -39,7 +40,7 @@ def cams():
 
 cams()
 
-st.markdown("#### Cách chạy camera")
+section("Cách chạy camera")
 st.markdown("Mở mỗi camera trong một cửa sổ dòng lệnh riêng, từ thư mục gốc dự án:")
 st.code("python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics", language="bash")
 st.code("python ai_engine/camera_bridge.py --camera-id 2 --source 1 --demographics", language="bash")

@@ -1,24 +1,39 @@
 """
 frontend/common.py  —  Thanh phan DUNG CHUNG cua giao dien (MODULE M2, phu trach: Minh)
 =======================================================================================
-Theme, dang nhap, goi API kem token, nhan tieng Viet, the KPI, bieu do.
-Moi trang trong frontend/views/ chi can:   from common import ...
+Ngon ngu thiet ke "Pho co Hoi An":
+  - Nen giay do nga, chu muc nau den; diem nhan do den long, vang tuong co,
+    xanh cua go; duong vien manh, goc vuong vua phai - khong emoji, khong mau ruc.
+  - Tieu de chu co chan Cormorant Garamond, noi dung Be Vietnam Pro.
+Moi trang chi can:   from common import page_header, kpi, kpi_row, ...
 """
 
 import os
+import sys
 from datetime import datetime, timedelta
 
 import requests
 import streamlit as st
 
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))  # de import backend.report_export
+
 try:
     import plotly.graph_objects as go  # noqa: F401
-    import plotly.express as px  # noqa: F401
     HAS_PLOTLY = True
 except ImportError:
     HAS_PLOTLY = False
 
 API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")
+
+# ------------------------------------------------------------------- bang mau
+C = {
+    "ink": "#1F1A17", "muted": "#776B5F", "line": "#E3D9C8", "paper": "#F5F0E6", "surface": "#FFFDF8",
+    "oxblood": "#7D2318", "gold": "#A8812F", "teal": "#2E5B58", "wood": "#5A3E2B", "stone": "#B9AE9F",
+    "ok": "#3C6E47", "warn": "#B07A12", "danger": "#8E2418",
+}
+COLORS = {"primary": C["oxblood"], "ochre": C["gold"], "moss": C["ok"], "blue": C["teal"], "danger": C["danger"],
+          "warn": C["warn"], "ok": C["ok"], "ink": C["ink"], "muted": C["muted"], "wood": C["wood"], "stone": C["stone"]}
+SERIES = [C["oxblood"], C["gold"], C["teal"], C["wood"], "#8C7B6A", "#C4A77D"]
 
 # ------------------------------------------------------------ nhan tieng Viet
 GENDER_VI = {"Man": "Nam", "Woman": "Nữ", None: "Không xác định"}
@@ -26,86 +41,137 @@ ORIGIN_VI = {"Trong nuoc": "Trong nước", "Nuoc ngoai": "Nước ngoài", None
 AGE_ORDER = ["0-5", "6-12", "13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65-69", "70+"]
 ROLE_VI = {"admin": "Quản trị viên", "quan_ly": "Quản lý", "nguoi_truc": "Người trực"}
 STATUS_META = {
-    "OK": {"label": "Bình thường", "tone": "ok", "icon": "●"},
-    "WARNING": {"label": "Cảnh báo Vàng", "tone": "warn", "icon": "▲"},
-    "ALERT": {"label": "Vàng · đang xác nhận", "tone": "warn", "icon": "▲"},
-    "CRITICAL": {"label": "Cảnh báo Đỏ · Quá tải", "tone": "danger", "icon": "■"},
+    "OK": {"label": "Bình thường", "tone": "ok"},
+    "WARNING": {"label": "Cảnh báo Vàng", "tone": "warn"},
+    "ALERT": {"label": "Vàng · đang xác nhận", "tone": "warn"},
+    "CRITICAL": {"label": "Cảnh báo Đỏ · Quá tải", "tone": "danger"},
 }
 EVENT_TONE = {"WARNING": "warn", "CRITICAL_ALERT": "danger", "CRITICAL_CLEARED": "ok", "GROUP_DETECTED": "info",
               "CAMERA_LOST": "danger", "CAMERA_RESTORED": "ok", "GATE_CLOSED": "warn", "GATE_REOPENED": "ok"}
 
-COLORS = {"primary": "#8E2A1F", "ochre": "#C0862B", "moss": "#3E7B57", "blue": "#2F6690",
-          "ink": "#2A2420", "muted": "#7A6F66", "line": "#E7E0D6", "bg": "#F7F4EE",
-          "danger": "#B3261E", "warn": "#C98A12", "ok": "#2E7D4F"}
-SERIES = ["#8E2A1F", "#C0862B", "#2F6690", "#3E7B57", "#7B5EA7", "#9C6644"]
-
 
 # ------------------------------------------------------------------- theme
 def apply_theme():
-    st.markdown(
+    st.markdown(_THEME_CSS, unsafe_allow_html=True)
+
+
+_THEME_CSS_RAW = (
         """
-        <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+        <link rel="preconnect" href="https://fonts.googleapis.com">
+        <link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@300;400;500;600;700&family=Cormorant+Garamond:wght@500;600;700&display=swap" rel="stylesheet">
         <style>
-        :root { --primary:#8E2A1F; --ochre:#C0862B; --moss:#3E7B57; --ink:#2A2420; --muted:#7A6F66;
-                --line:#E7E0D6; --card:#FFFFFF; --bg:#F7F4EE; --danger:#B3261E; --warn:#C98A12; --ok:#2E7D4F; --info:#2F6690; }
-        html, body, [class*="css"], .stApp, button, input, textarea, select { font-family: 'Be Vietnam Pro', system-ui, sans-serif !important; }
-        .stApp { background: var(--bg); color: var(--ink); }
-        .block-container { padding-top: 1.6rem; padding-bottom: 3rem; max-width: 1280px; }
-        [data-testid="stSidebar"] { background: #FFFDF9; border-right: 1px solid var(--line); }
-        [data-testid="stSidebarNav"] a span { font-weight: 500; }
-        h1, h2, h3 { color: var(--ink); letter-spacing: -0.01em; }
-        .sc-header { display:flex; align-items:center; gap:14px; margin: 0 0 18px 0; }
-        .sc-header-icon { width:46px; height:46px; border-radius:12px; background:var(--primary); color:#fff;
-                          display:flex; align-items:center; justify-content:center; font-size:22px; flex-shrink:0; }
-        .sc-title { font-size: 1.55rem; font-weight: 800; line-height:1.2; margin:0; color:var(--ink); }
-        .sc-sub { color: var(--muted); font-size: .92rem; margin-top: 2px; }
-        .sc-kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap:12px; margin: 4px 0 16px 0; }
-        .sc-kpi { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px 16px;
-                  box-shadow: 0 1px 2px rgba(42,36,32,.04); border-left: 4px solid var(--line); }
-        .sc-kpi.ok { border-left-color: var(--ok); } .sc-kpi.warn { border-left-color: var(--warn); }
-        .sc-kpi.danger { border-left-color: var(--danger); } .sc-kpi.info { border-left-color: var(--info); }
-        .sc-kpi.primary { border-left-color: var(--primary); }
-        .sc-kpi-label { color:var(--muted); font-size:.8rem; font-weight:600; text-transform:uppercase; letter-spacing:.04em; }
-        .sc-kpi-value { font-size:1.9rem; font-weight:800; color:var(--ink); line-height:1.15; margin-top:4px; font-variant-numeric: tabular-nums; }
-        .sc-kpi-sub { color:var(--muted); font-size:.85rem; margin-top:2px; }
-        .sc-badge { display:inline-flex; align-items:center; gap:6px; padding:3px 10px; border-radius:999px;
-                    font-size:.82rem; font-weight:700; border:1px solid transparent; white-space:nowrap; }
-        .sc-badge.ok { background:#E5F2EA; color:var(--ok); border-color:#C7E3D2; }
-        .sc-badge.warn { background:#FBF0D9; color:#8A5D05; border-color:#F0DBAA; }
-        .sc-badge.danger { background:#FBE3E1; color:var(--danger); border-color:#F2C2BE; }
-        .sc-badge.info { background:#E3EDF5; color:var(--info); border-color:#C5D8E8; }
-        .sc-badge.muted { background:#EFEBE5; color:var(--muted); border-color:var(--line); }
-        .sc-bar { height:14px; background:#EFEBE5; border-radius:999px; overflow:hidden; margin:6px 0 4px; }
-        .sc-bar > div { height:100%; border-radius:999px; transition: width .4s; }
-        .sc-note { background:#FFFDF9; border:1px dashed var(--line); border-radius:12px; padding:10px 14px;
-                   color:var(--muted); font-size:.86rem; }
-        .sc-alert { border-radius:14px; padding:14px 18px; font-weight:700; margin-bottom:14px; font-size:1.02rem; }
-        .sc-alert.danger { background:var(--danger); color:#fff; } .sc-alert.warn { background:#F6E2B3; color:#5E3F03; }
-        .sc-alert.info { background:#E3EDF5; color:var(--info); }
-        .sc-incident { background:#fff; border:1px solid #F2C2BE; border-left:6px solid var(--danger);
-                       border-radius:14px; padding:12px 16px; margin-bottom:8px; }
-        .sc-brand { font-weight:800; font-size:1.15rem; color:var(--primary); }
-        .sc-brand-sub { color:var(--muted); font-size:.75rem; letter-spacing:.08em; text-transform:uppercase; }
-        .sc-user { background:var(--bg); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:8px 0; font-size:.88rem; }
-        div[data-testid="stForm"], div[data-testid="stVerticalBlockBorderWrapper"] { background: var(--card); border-radius: 14px; }
-        .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button { border-radius: 10px; font-weight: 600; }
-        .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"] { background: var(--primary); border-color: var(--primary); }
-        [data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
+        :root { --ink:#1F1A17; --muted:#776B5F; --line:#E3D9C8; --paper:#F5F0E6; --surface:#FFFDF8;
+                --oxblood:#7D2318; --gold:#A8812F; --teal:#2E5B58; --wood:#5A3E2B;
+                --ok:#3C6E47; --warn:#B07A12; --danger:#8E2418;
+                --serif:'Cormorant Garamond', 'Times New Roman', serif; --sans:'Be Vietnam Pro', system-ui, sans-serif; }
+        html, body, .stApp, button, input, textarea, select, [data-testid="stMarkdownContainer"] { font-family: var(--sans) !important; }
+        .stApp { background: var(--paper); color: var(--ink); }
+        .block-container { padding-top: 2.2rem; padding-bottom: 4rem; max-width: 1240px; }
+        h1, h2, h3, h4 { font-family: var(--serif) !important; color: var(--ink); font-weight: 600; letter-spacing: .005em; }
+        [data-testid="stHeader"] { background: transparent; }
+
+        /* --- sidebar go sam --- */
+        [data-testid="stSidebar"] { border-right: 1px solid #3A2E25; }
+        [data-testid="stSidebarNav"] [data-testid="stNavSectionHeader"], [data-testid="stSidebarNav"] header {
+            font-size: .68rem !important; letter-spacing: .2em; text-transform: uppercase; color: #A8812F !important; font-weight: 600; }
+        [data-testid="stSidebarNav"] a { border-radius: 2px; }
+        [data-testid="stSidebarNav"] a[aria-current="page"] { background: rgba(168,129,47,.16); box-shadow: inset 2px 0 0 #C9A45C; }
+        [data-testid="stSidebarNav"] a span { font-size: .9rem; }
+        .sc-user { border-top: 1px solid #3A2E25; padding: 14px 2px 6px; margin-top: 8px; font-size: .85rem; color: #EDE4D3; }
+        .sc-user .role { color: #B8AA95; font-size: .78rem; letter-spacing: .04em; }
+        .sc-user .dot { display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px; vertical-align: 1px; }
+
+        /* --- tieu de trang --- */
+        .sc-head { margin: 0 0 26px 0; }
+        .sc-eyebrow { font-size: .72rem; letter-spacing: .24em; text-transform: uppercase; color: var(--gold); font-weight: 600; }
+        .sc-title { font-family: var(--serif); font-size: 2.45rem; line-height: 1.08; font-weight: 600; color: var(--ink); margin: 4px 0 6px; }
+        .sc-sub { color: var(--muted); font-size: .95rem; font-weight: 300; max-width: 760px; }
+        .sc-rule { display:flex; align-items:center; gap:10px; margin-top: 16px; }
+        .sc-rule::before { content:""; height:1px; width:44px; background: var(--oxblood); }
+        .sc-rule::after { content:""; height:1px; flex:1; background: var(--line); }
+        .sc-rule span { width:6px; height:6px; transform: rotate(45deg); background: var(--gold); }
+        .sc-section { font-family: var(--serif); font-size: 1.45rem; font-weight: 600; margin: 28px 0 10px; color: var(--ink);
+                      border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+        .sc-section small { font-family: var(--sans); font-size: .8rem; color: var(--muted); font-weight: 300; margin-left: 10px; }
+
+        /* --- the so lieu --- */
+        .sc-kpis { display:grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 0; margin: 4px 0 18px;
+                   border: 1px solid var(--line); background: var(--surface); }
+        .sc-kpi { padding: 18px 20px 16px; border-right: 1px solid var(--line); position: relative; }
+        .sc-kpi:last-child { border-right: none; }
+        .sc-kpi::before { content:""; position:absolute; left:20px; top:0; width:28px; height:2px; background: var(--line); }
+        .sc-kpi.ok::before { background: var(--ok); } .sc-kpi.warn::before { background: var(--warn); }
+        .sc-kpi.danger::before { background: var(--danger); } .sc-kpi.primary::before { background: var(--oxblood); }
+        .sc-kpi.info::before { background: var(--teal); }
+        .sc-kpi-label { color: var(--muted); font-size: .7rem; font-weight: 600; letter-spacing: .14em; text-transform: uppercase; }
+        .sc-kpi-value { font-size: 2.05rem; font-weight: 500; color: var(--ink); line-height: 1.15; margin-top: 8px;
+                        font-variant-numeric: tabular-nums lining-nums; letter-spacing: -.01em; }
+        .sc-kpi-value small { font-size: .95rem; color: var(--muted); font-weight: 300; }
+        .sc-kpi-sub { color: var(--muted); font-size: .82rem; margin-top: 4px; font-weight: 300; }
+
+        /* --- nhan trang thai --- */
+        .sc-badge { display:inline-flex; align-items:center; gap:7px; padding: 3px 10px; border-radius: 2px; font-size: .74rem;
+                    font-weight: 600; letter-spacing: .06em; text-transform: uppercase; border: 1px solid; white-space: nowrap; }
+        .sc-badge::before { content:""; width:6px; height:6px; border-radius:50%; background: currentColor; }
+        .sc-badge.ok { color: var(--ok); border-color: #C9D9CC; background: #F1F6F1; }
+        .sc-badge.warn { color: #8A5E0B; border-color: #E8D6AE; background: #FBF4E4; }
+        .sc-badge.danger { color: var(--danger); border-color: #E6C3BC; background: #FAEEEB; }
+        .sc-badge.info { color: var(--teal); border-color: #C5D6D4; background: #EFF5F4; }
+        .sc-badge.muted { color: var(--muted); border-color: var(--line); background: var(--surface); }
+
+        .sc-bar { height: 6px; background: #EAE2D4; margin: 8px 0 6px; }
+        .sc-bar > div { height: 100%; transition: width .4s; }
+        .sc-meta { display:flex; justify-content: space-between; font-size: .8rem; color: var(--muted); letter-spacing: .02em; }
+        .sc-note { border-left: 2px solid var(--gold); background: rgba(168,129,47,.06); padding: 10px 16px;
+                   color: #5F554B; font-size: .86rem; line-height: 1.6; margin: 10px 0; }
+        .sc-alert { padding: 13px 18px; margin-bottom: 14px; font-size: .95rem; border-left: 3px solid; }
+        .sc-alert b { font-weight: 600; letter-spacing: .02em; }
+        .sc-alert.danger { background: var(--oxblood); border-color: #C9A45C; color: #FBF4E8; }
+        .sc-alert.warn { background: #F7EBCF; border-color: var(--warn); color: #5B3F07; }
+        .sc-alert.info { background: #E7EFEE; border-color: var(--teal); color: #23443F; }
+        .sc-item { border: 1px solid var(--line); background: var(--surface); padding: 12px 16px; margin-bottom: 8px; }
+        .sc-item.danger { border-left: 3px solid var(--danger); }
+        .sc-item .t { font-weight: 600; } .sc-item .m { color: var(--muted); font-size: .82rem; margin-top: 2px; }
+        .sc-empty { color: var(--muted); font-size: .88rem; padding: 18px 0; font-style: italic; font-family: var(--serif); font-size: 1.05rem; }
+
+        /* --- the Streamlit --- */
+        div[data-testid="stVerticalBlockBorderWrapper"] { background: var(--surface); border-radius: 0 !important; border-color: var(--line) !important; }
+        div[data-testid="stForm"] { background: var(--surface); border-radius: 0; border-color: var(--line); }
+        .stButton > button, .stDownloadButton > button, .stFormSubmitButton > button, [data-testid="stPopover"] button {
+            border-radius: 2px; font-weight: 500; letter-spacing: .02em; border-color: #CFC3AF; }
+        .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
+            background: var(--oxblood); border-color: var(--oxblood); color: #FBF4E8; }
+        .stButton > button[kind="primary"]:hover, .stFormSubmitButton > button[kind="primary"]:hover { background: #63190F; border-color: #63190F; }
+        [data-baseweb="input"], [data-baseweb="select"] > div, [data-baseweb="textarea"] { border-radius: 2px !important; }
+        [data-testid="stDataFrame"] { border: 1px solid var(--line); }
+        [data-baseweb="tab-list"] { gap: 24px; border-bottom: 1px solid var(--line); }
+        [data-baseweb="tab"] { font-weight: 500; letter-spacing: .02em; }
+        [data-testid="stCaptionContainer"] { color: var(--muted); }
         </style>
-        """,
-        unsafe_allow_html=True,
-    )
+        """
+)
+# Bo dong trong: dong trong lam Markdown cua Streamlit ngat khoi <style> va in CSS ra man hinh.
+_THEME_CSS = "\n".join(line for line in _THEME_CSS_RAW.splitlines() if line.strip())
 
 
 # ------------------------------------------------------------- thanh phan
-def page_header(icon: str, title: str, subtitle: str = ""):
-    st.markdown(f'<div class="sc-header"><div class="sc-header-icon">{icon}</div><div>'
-                f'<div class="sc-title">{title}</div><div class="sc-sub">{subtitle}</div></div></div>',
+def page_header(eyebrow: str, title: str, subtitle: str = ""):
+    st.markdown(f'<div class="sc-head"><div class="sc-eyebrow">{eyebrow}</div><div class="sc-title">{title}</div>'
+                f'<div class="sc-sub">{subtitle}</div><div class="sc-rule"><span></span></div></div>',
+                unsafe_allow_html=True)
+
+
+def section(title: str, small: str = ""):
+    st.markdown(f'<div class="sc-section">{title}' + (f"<small>{small}</small>" if small else "") + "</div>",
                 unsafe_allow_html=True)
 
 
 def fmt_int(n) -> str:
     return "–" if n is None else f"{int(n):,}".replace(",", ".")
+
+
+def fmt_pct(v) -> str:
+    return "–" if v is None else f"{v:.0f}%" if float(v).is_integer() else f"{v:.1f}%"
 
 
 def kpi(label: str, value, sub: str = "", tone: str = "") -> str:
@@ -123,7 +189,7 @@ def badge(text: str, tone: str = "muted") -> str:
 
 def status_badge(code: str) -> str:
     m = STATUS_META.get(code, STATUS_META["OK"])
-    return badge(f"{m['icon']} {m['label']}", m["tone"])
+    return badge(m["label"], m["tone"])
 
 
 def note(text: str):
@@ -134,24 +200,27 @@ def alert_box(text: str, tone: str = "danger"):
     st.markdown(f'<div class="sc-alert {tone}">{text}</div>', unsafe_allow_html=True)
 
 
-def capacity_bar(count: int, maximum: int):
+def empty(text: str):
+    st.markdown(f'<div class="sc-empty">{text}</div>', unsafe_allow_html=True)
+
+
+def capacity_bar(count: int, maximum: int, warn_at: int = None):
     pct = min(100, round(count / maximum * 100)) if maximum else 0
-    warn_at = round(maximum * 0.75)
-    color = COLORS["danger"] if count > maximum else COLORS["warn"] if count >= warn_at else COLORS["ok"]
-    st.markdown(f'<div style="display:flex;justify-content:space-between;font-size:.85rem;color:var(--muted)">'
-                f'<span>Sức chứa cầu</span><span><b style="color:var(--ink)">{count}/{maximum}</b> người ({pct}%)</span></div>'
-                f'<div class="sc-bar"><div style="width:{pct}%;background:{color}"></div></div>',
+    warn_at = warn_at if warn_at is not None else round(maximum * 0.75)
+    color = C["danger"] if count > maximum else C["warn"] if count >= warn_at else C["ok"]
+    st.markdown(f'<div class="sc-meta"><span>SỨC CHỨA CẦU</span><span><b style="color:var(--ink)">{count} / {maximum}</b>'
+                f' người · {pct}%</span></div><div class="sc-bar"><div style="width:{pct}%;background:{color}"></div></div>',
                 unsafe_allow_html=True)
 
 
 def style_fig(fig, height=320, legend=True):
-    fig.update_layout(height=height, margin=dict(l=8, r=8, t=30, b=8), paper_bgcolor="rgba(0,0,0,0)",
-                      plot_bgcolor="rgba(0,0,0,0)", font=dict(family="Be Vietnam Pro, sans-serif", color="#2A2420", size=13),
-                      colorway=SERIES, showlegend=legend,
-                      legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, title_text=""),
-                      hoverlabel=dict(font_family="Be Vietnam Pro, sans-serif"))
-    fig.update_xaxes(gridcolor="#EFEBE5", zeroline=False)
-    fig.update_yaxes(gridcolor="#EFEBE5", zeroline=False)
+    fig.update_layout(height=height, margin=dict(l=4, r=4, t=26, b=4), paper_bgcolor="rgba(0,0,0,0)",
+                      plot_bgcolor="rgba(0,0,0,0)", font=dict(family="Be Vietnam Pro, sans-serif", color=C["ink"], size=12),
+                      colorway=SERIES, showlegend=legend, bargap=0.35,
+                      legend=dict(orientation="h", yanchor="bottom", y=1.02, x=0, title_text="", font=dict(size=12)),
+                      hoverlabel=dict(font_family="Be Vietnam Pro, sans-serif", bgcolor=C["surface"]))
+    fig.update_xaxes(gridcolor="#ECE4D6", zeroline=False, linecolor=C["line"], tickfont=dict(color=C["muted"]))
+    fig.update_yaxes(gridcolor="#ECE4D6", zeroline=False, linecolor=C["line"], tickfont=dict(color=C["muted"]))
     return fig
 
 
@@ -188,6 +257,17 @@ def fmt_duration(seconds) -> str:
     return f"{h} giờ {m:02d} phút"
 
 
+def fmt_mmss(seconds) -> str:
+    """Thoi luong gon cho o KPI: 1:49 phut / 45 giay."""
+    if seconds is None:
+        return "–"
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}<small> giây</small>"
+    m, s = divmod(seconds, 60)
+    return f"{m}:{s:02d}<small> phút</small>"
+
+
 def local_today():
     return (datetime.utcnow() + timedelta(hours=utc_offset_hours())).date()
 
@@ -202,9 +282,9 @@ def _headers():
     return {"Authorization": f"Bearer {tok}"} if tok else {}
 
 
-def _call(method, path, **kw):
+def _call(method, path, raw=False, **kw):
     try:
-        r = requests.request(method, f"{API_BASE}{path}", headers=_headers(), timeout=10, **kw)
+        r = requests.request(method, f"{API_BASE}{path}", headers=_headers(), timeout=20, **kw)
     except requests.RequestException:
         raise ApiError("Không kết nối được máy chủ. Hãy chạy backend: uvicorn backend.main:app --port 8000")
     if r.status_code == 401 and st.session_state.get("token"):
@@ -217,11 +297,15 @@ def _call(method, path, **kw):
         except ValueError:
             detail = r.text
         raise ApiError(detail if isinstance(detail, str) else str(detail))
-    return r.json()
+    return r.content if raw else r.json()
 
 
 def api_get(path, params=None):
     return _call("GET", path, params=params)
+
+
+def api_get_bytes(path):
+    return _call("GET", path, raw=True)
 
 
 def api_post(path, payload=None, params=None):
@@ -237,7 +321,6 @@ def api_delete(path):
 
 
 def safe_get(path, params=None):
-    """GET va tu hien loi tren trang; tra ve None neu loi."""
     try:
         return api_get(path, params)
     except ApiError as e:
@@ -281,20 +364,44 @@ def restore_session() -> bool:
     return True
 
 
+BRIDGE_SVG = """<svg viewBox="0 0 360 150" xmlns="http://www.w3.org/2000/svg" fill="none" stroke="#C9A45C" stroke-width="1.4">
+<path d="M10 128 H350"/><path d="M40 128 Q180 70 320 128" />
+<path d="M70 114 V86 M110 100 V78 M150 92 V72 M210 92 V72 M250 100 V78 M290 114 V86"/>
+<path d="M58 88 Q180 40 302 88"/><path d="M52 86 L180 26 L308 86"/>
+<path d="M150 40 L180 14 L210 40"/><path d="M174 14 V6 M186 14 V6"/>
+<circle cx="120" cy="96" r="3"/><circle cx="240" cy="96" r="3"/>
+<path d="M10 140 Q40 134 70 140 T130 140 T190 140 T250 140 T310 140 T350 140" stroke-opacity=".5"/>
+</svg>"""
+
+
 def login_page():
     apply_theme()
-    _, mid, _ = st.columns([1, 1.1, 1])
-    with mid:
-        st.markdown('<div style="text-align:center;margin:48px 0 18px">'
-                    '<div style="font-size:44px">🏯</div>'
-                    '<div class="sc-title" style="font-size:1.8rem">SmartCau AI</div>'
-                    '<div class="sc-sub">Hệ thống camera AI quản lý đám đông · Chùa Cầu Hội An</div></div>',
-                    unsafe_allow_html=True)
+    st.markdown("<style>.block-container{max-width:1100px;padding-top:6vh}</style>", unsafe_allow_html=True)
+    left, gap, right = st.columns([1.15, .12, 1])
+    with left:
+        st.markdown(
+            f"""<div style="background:#1E1814;color:#EDE4D3;padding:44px 42px 36px;min-height:520px;position:relative">
+            <div style="font-size:.7rem;letter-spacing:.3em;color:#C9A45C;font-weight:600">HỘI AN · DI SẢN THẾ GIỚI</div>
+            <div style="font-family:var(--serif);font-size:3.1rem;line-height:1.05;margin:18px 0 10px;font-weight:600">Chùa Cầu</div>
+            <div style="font-family:var(--serif);font-size:1.35rem;color:#C9B89C;font-style:italic">Lai Viễn Kiều · 1593</div>
+            <div style="width:44px;height:1px;background:#C9A45C;margin:26px 0"></div>
+            <div style="font-size:.92rem;line-height:1.75;color:#CDBFA8;font-weight:300;max-width:380px">
+            Hệ thống camera AI giám sát lượng khách, cảnh báo quá tải và phân tích cơ cấu du khách,
+            giúp gìn giữ di tích và an toàn cho người tham quan.</div>
+            <div style="margin-top:40px;opacity:.9">{BRIDGE_SVG}</div>
+            <div style="position:absolute;bottom:22px;left:42px;font-size:.72rem;color:#8F826F;letter-spacing:.08em">
+            SMARTCAU AI · NHÓM 50 · ĐẠI HỌC KINH TẾ ĐÀ NẴNG</div></div>""",
+            unsafe_allow_html=True)
+    with right:
+        st.markdown('<div style="height:70px"></div><div class="sc-eyebrow">Đăng nhập hệ thống</div>'
+                    '<div class="sc-title" style="font-size:2.1rem">Trạm quản lý</div>'
+                    '<div class="sc-sub">Dành cho người trực, cán bộ quản lý và quản trị viên.</div>'
+                    '<div class="sc-rule" style="margin-bottom:22px"><span></span></div>', unsafe_allow_html=True)
         if not api_is_up():
-            st.error("Chưa kết nối được máy chủ. Hãy chạy backend trước:\n\n"
-                     "`uvicorn backend.main:app --reload --port 8000`")
-        with st.form("login"):
-            username = st.text_input("Tên đăng nhập", placeholder="vd: admin")
+            alert_box("Chưa kết nối được máy chủ. Hãy chạy backend trước: "
+                      "<code>uvicorn backend.main:app --reload --port 8000</code>", "warn")
+        with st.form("login", border=False):
+            username = st.text_input("Tên đăng nhập")
             password = st.text_input("Mật khẩu", type="password")
             ok = st.form_submit_button("Đăng nhập", type="primary", width="stretch")
         if ok:
@@ -314,12 +421,12 @@ def login_page():
                     st.error(r.json().get("detail", "Đăng nhập thất bại."))
                 except ValueError:
                     st.error("Đăng nhập thất bại.")
-        st.caption("Lần đầu sử dụng: tài khoản **admin**, mật khẩu **admin123** — hệ thống sẽ yêu cầu đổi mật khẩu.")
+        st.caption("Lần đầu sử dụng: tài khoản admin, mật khẩu admin123. Hệ thống sẽ yêu cầu đổi mật khẩu.")
 
 
 def change_password_form(forced=False):
     if forced:
-        st.warning("Bạn đang dùng mật khẩu mặc định hoặc mật khẩu do quản trị viên đặt. Hãy đổi mật khẩu để tiếp tục.")
+        note("Bạn đang dùng mật khẩu mặc định hoặc mật khẩu tạm do quản trị viên đặt. Hãy đổi mật khẩu để tiếp tục.")
     with st.form("change_pw", clear_on_submit=True):
         old = st.text_input("Mật khẩu hiện tại", type="password")
         new = st.text_input("Mật khẩu mới (ít nhất 6 ký tự)", type="password")
