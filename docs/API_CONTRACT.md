@@ -15,6 +15,10 @@ Trạng thái: **Chạy** = đã có dữ liệu thật · **Mock** = trả dữ
 | F1.2 | `GET /stats/occupancy` → `{current_count}` | Chạy | Minh | camera, Bảng LED |
 | F5.1 | `GET /stats/current` → `{current_count, current_status, total_visitors_logged, gender_breakdown, average_age}` | Chạy | Minh | Tổng quan, Bảng LED |
 | F5.1 | `GET /stats/occupancy/history?limit=` → `[{timestamp, count, status}]` | Chạy | Minh | Tổng quan (Khánh) |
+| F1.2/F1.3 | `POST /bridge/crossing` `{camera_id: 1\|2, direction: "in"\|"out", track_id}` → `{num1, num2, onbridge, dem, date, reset}` | Chạy | Minh | camera_bridge.py |
+| F1.2 | `GET /bridge/state` → `{num1, num2, onbridge, dem, date}` | Chạy | Minh | Lượt qua cầu |
+| F1.3 | `GET /bridge/stats?group=hour\|day\|month\|year&date_from=&date_to=` → `{total_entries, total_exits, rows:[{period, entries, exits, entries_cam1, entries_cam2}]}` | Chạy | Minh | Lượt qua cầu |
+| F1.2 | `POST /bridge/reset?reset_dem=` (X-Admin-Key) | Chạy | Minh | — |
 | F1.4 | `POST /facade_pass`, `GET /stats/facade?date=` → `{date, by_hour:[{hour, facade_passes}]}` | Mock | Minh (S5) | Báo cáo |
 | F2 | `POST /system_events` `{event_type, count, message}` | Chạy | Minh | camera |
 | F2 | `GET /system_events?limit=` | Chạy | Minh | — |

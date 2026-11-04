@@ -54,7 +54,19 @@ Ai chỉ làm giao diện/backend (Hoan, Khánh) có thể bỏ qua `ultralytics
 | 3a | `python ai_engine/camera_in.py` | camera thật (cần YOLO + DeepFace) |
 | 3b | `python tools/seed_demo_data.py` | **hoặc** nạp dữ liệu mẫu, không cần camera |
 
-Kiểm thử trước khi tạo Pull Request: `pytest tests/test_api.py -q`
+### Chế độ 2 camera chân cầu (khuyến nghị)
+
+Mỗi chân cầu 1 camera quay từ cầu ra chân cầu, kẻ 1 vạch ngang lối đi. Khách qua vạch về phía cầu = **vào** (`num_k += 1`, `dem += 1`), qua vạch ra ngoài = **ra** (`num_k -= 1`). Số khách trên cầu `onbridge = num1 + num2`; khi `onbridge <= 0` thì đặt lại `num1 = num2 = 0`. `dem` là lượt vào cầu trong ngày, tự về 0 khi sang ngày mới (giờ Việt Nam). Chi tiết: `backend/routers/bridge.py`, `ai_engine/line_crossing.py`.
+
+| Terminal | Lệnh |
+|---|---|
+| 3 | `python ai_engine/camera_bridge.py --camera-id 1 --source 0` (chân cầu 1, gửi cảnh báo) |
+| 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1` (chân cầu 2) |
+| — | **hoặc** `python tools/simulate_bridge.py` để giả lập 2 camera |
+
+Trên cửa sổ camera nhấn `l` để kẻ lại vạch bằng chuột (2 điểm của vạch + 1 điểm phía cầu), vạch lưu ở `ai_engine/config/`. Thống kê xem ở trang **Lượt qua cầu**. Không chạy chung với `camera_in.py` / `camera_out.py` vì cả hai cùng ghi số người trên cầu.
+
+Kiểm thử trước khi tạo Pull Request: `pytest tests/ -q`
 
 ## Ghi chú di chuyển từ cấu trúc cũ
 

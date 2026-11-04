@@ -9,7 +9,7 @@ CHAY (tu THU MUC GOC du an, sau khi backend da chay):
     streamlit run frontend/app.py
 
 Bang phan cong trang (xem docs/PHAN_CONG.md):
-    Van hanh   : Tong quan (Khanh) · Truc ca (Hoan) · Bang LED (Hoan)
+    Van hanh   : Tong quan (Khanh) · Truc ca (Hoan) · Bang LED (Hoan) · Luot qua cau (Minh)
     Phan tich  : Co cau khach (Hoan) · Lich su (Khanh) · Bao cao (Hoan) · Doi chieu ve (Hoan)
     Quan tri   : Nguong canh bao (Khanh) · Nguoi nhan canh bao (Khanh) ·
                  Quyen rieng tu (Khanh) · Google Sheets (Minh)
@@ -57,6 +57,7 @@ pages = {
         st.Page("views/tong_quan.py", title="Tong quan", icon="🏯", default=True),
         st.Page("views/truc_ca.py", title="Truc ca & su co", icon="🚨"),
         st.Page("views/bang_led.py", title="Bang LED tai cho", icon="🪧"),
+        st.Page("views/luot_qua_cau.py", title="Luot qua cau", icon="🌉"),
     ],
     "Phan tich": [
         st.Page("views/co_cau_khach.py", title="Co cau khach", icon="👥"),

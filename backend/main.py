@@ -5,6 +5,7 @@ Thay cho src/api_server.py cu. Moi chuc nang BFD nam o 1 file rieng trong
 backend/routers/ de 3 thanh vien lam SONG SONG ma khong sua chung 1 file:
 
     routers/counting.py      F1 Giam sat luong khach      (Minh)
+    routers/bridge.py        F1 Dem khach tren cau bang 2 camera (Minh)
     routers/alerts.py        F2 Dieu tiet qua tai         (Minh + Hoan)
     routers/demographics.py  F3 Phan tich khach tham quan (Minh)
     routers/tickets.py       F4 Doi chieu ve              (Hoan)
@@ -28,7 +29,7 @@ from fastapi import FastAPI
 
 from . import models  # noqa: F401  (dang ky cac bang loi voi Base)
 from .database import Base, engine
-from .routers import admin, alerts, counting, demographics, reports, tickets
+from .routers import admin, alerts, bridge, counting, demographics, reports, tickets
 from .security import ADMIN_API_KEY, API_KEY
 
 app = FastAPI(
@@ -37,7 +38,7 @@ app = FastAPI(
     version="0.3.0",
 )
 
-for r in (counting.router, alerts.router, demographics.router,
+for r in (counting.router, bridge.router, alerts.router, demographics.router,
           tickets.router, reports.router, admin.router):
     app.include_router(r)
 
