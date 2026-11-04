@@ -340,3 +340,44 @@ def test_telegram_connect_and_find_chats(monkeypatch):
     assert client.get("/telegram/chats").status_code == 401
     assert client.delete("/telegram/token", headers=ADMIN).json()["connected"] is False
     assert "Chưa kết nối bot" in notify._send_telegram("111", "thử")
+
+
+# ------------------------------------------------- nhan dinh & du bao
+def test_insights_live_trend_wait_and_forecast():
+    from backend.database import SessionLocal
+    from backend.routers.bridge import BridgeCrossing
+    from backend.timeutil import local_now
+    now = local_now()
+    with SessionLocal() as db:            # lich su: cung thu 1 tuan truoc, moi gio 10 luot
+        for h in range(24):
+            for _ in range(10):
+                t = (now - timedelta(days=7)).replace(hour=h, minute=30)
+                db.add(BridgeCrossing(timestamp=t, local_time=t, camera_id=1, direction="in", onbridge_after=0))
+        db.commit()
+    client.post("/bridge/reset", headers=ADMIN, params={"reset_dem": True})
+    for _ in range(12):
+        _cross(1, "in")
+    _cross(2, "out")
+    d = client.get("/insights/live").json()
+    assert d["trend"] == "tăng" and d["in_per_min"] >= round(12 / 5, 1) and d["net_per_min"] > 0
+    assert len(d["forecast"]) == 24 and d["history_days"] >= 1
+    assert d["forecast"][23]["actual"] is None or now.hour == 23
+    if d["onbridge"] <= d["capacity"]:
+        assert d["minutes_to_full"] is not None
+    # FR-17: qua tai -> thoi gian cho
+    for _ in range(15):
+        _cross(1, "in")
+    d = client.get("/insights/live").json()
+    assert d["onbridge"] > d["capacity"] and d["wait_label"] in ("Dưới 3 phút", "3–5 phút", "Trên 5 phút")
+
+
+def test_insights_summary_sentences():
+    items = client.get("/insights/summary").json()["items"]
+    assert items and all({"tone", "title", "text"} <= set(i) for i in items)
+    assert any(i["title"] in ("So với tuần trước", "Lượt khách hôm nay") for i in items)
+
+
+def test_wait_buckets():
+    from backend.routers.insights import wait_bucket
+    assert wait_bucket(1) == "Dưới 3 phút" and wait_bucket(4) == "3–5 phút" and wait_bucket(9) == "Trên 5 phút"
+    assert wait_bucket(None) is None

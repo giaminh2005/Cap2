@@ -29,7 +29,7 @@ from fastapi import FastAPI
 
 from . import daily_report, models  # noqa: F401  (dang ky cac bang voi Base)
 from .database import SessionLocal, ensure_schema
-from .routers import accounts, admin, alerts, bridge, counting, demographics, reports, tickets
+from .routers import accounts, admin, alerts, bridge, counting, demographics, insights, reports, tickets
 from .security import ADMIN_API_KEY, API_KEY
 from .timeutil import UTC_OFFSET_HOURS
 
@@ -40,7 +40,7 @@ app = FastAPI(
 )
 
 for r in (counting.router, bridge.router, alerts.router, demographics.router,
-          tickets.router, reports.router, admin.router, accounts.router):
+          tickets.router, reports.router, admin.router, accounts.router, insights.router):
     app.include_router(r)
 
 # Tao bang + bo sung cot moi SAU khi da import moi router.

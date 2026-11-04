@@ -96,8 +96,39 @@ with st.container(border=True):
         fig = go.Figure()
         fig.add_bar(x=df["Thời gian"], y=df["entries_cam1"], name="Vào ở chân cầu 1", marker_color=COLORS["primary"])
         fig.add_bar(x=df["Thời gian"], y=df["entries_cam2"], name="Vào ở chân cầu 2", marker_color=COLORS["ochre"])
-        fig.update_layout(barmode="stack")
-        st.plotly_chart(style_fig(fig, 340), width="stretch")
+        fig.update_layout(barmode="stack", clickmode="event+select")
+        event = st.plotly_chart(style_fig(fig, 340), width="stretch", on_select="rerun", selection_mode="points",
+                                key=f"bars_{group}")
+        st.caption("Bấm vào một cột để xem chi tiết khoảng thời gian đó." if group != "hour" else "")
+        pts = (event or {}).get("selection", {}).get("points", []) if isinstance(event, dict) else \
+            (event.selection.points if event and getattr(event, "selection", None) else [])
+        if pts and group != "hour":
+            label_sel = pts[0]["x"]
+            period = df.loc[df["Thời gian"] == label_sel, "period"]
+            if not period.empty:
+                p = period.iloc[0]
+                sub_group = {"day": "hour", "month": "day", "year": "month"}[group]
+                if group == "day":
+                    d_from = d_to = p
+                elif group == "month":
+                    import calendar
+                    y, m = int(p[:4]), int(p[5:7])
+                    d_from, d_to = f"{p}-01", f"{p}-{calendar.monthrange(y, m)[1]:02d}"
+                else:
+                    d_from, d_to = f"{p}-01-01", f"{p}-12-31"
+                sub = safe_get("/bridge/stats", {"group": sub_group, "date_from": d_from, "date_to": d_to})
+                if sub and sub["rows"]:
+                    section(f"Chi tiết {label_sel}", f"{fmt_int(sub['total_entries'])} lượt vào")
+                    sd = pd.DataFrame(sub["rows"])
+                    xs = sd["period"].map(lambda v: f"{v[11:13]}h" if sub_group == "hour" else
+                                          f"{v[8:10]}/{v[5:7]}" if sub_group == "day" else f"Tháng {v[5:7]}")
+                    f2 = go.Figure()
+                    f2.add_bar(x=xs, y=sd["entries_cam1"], name="Chân cầu 1", marker_color=COLORS["primary"])
+                    f2.add_bar(x=xs, y=sd["entries_cam2"], name="Chân cầu 2", marker_color=COLORS["ochre"])
+                    f2.add_scatter(x=xs, y=sd["exits"], name="Lượt ra", mode="lines+markers",
+                                   line=dict(color=COLORS["blue"], width=1.5))
+                    f2.update_layout(barmode="stack")
+                    st.plotly_chart(style_fig(f2, 280), width="stretch", key=f"sub_{group}_{p}")
     else:
         st.bar_chart(df.set_index("Thời gian")[["entries_cam1", "entries_cam2"]])
 

@@ -26,8 +26,13 @@ def sign():
     if cur is None or cfg is None:
         return
     level = cur["current_status"]
+    lv = safe_get("/insights/live") or {}
     key = "CRITICAL" if level == "CRITICAL" else "WARNING" if level in ("WARNING", "ALERT") else "OK"
     bg, lamp, vi, en = SIGNS[key]
+    wait_html = ""
+    if key == "CRITICAL" and lv.get("wait_label"):     # FR-17: thoi gian cho du kien theo bac
+        wait_html = (f'<div style="margin-top:22px;font-size:clamp(1rem,2.2vw,1.5rem);letter-spacing:.04em">'
+                     f'THỜI GIAN CHỜ DỰ KIẾN: {lv["wait_label"].upper()} · ESTIMATED WAIT: {lv["wait_label_en"].upper()}</div>')
     lamps = "".join(
         f'<div style="width:46px;height:46px;border-radius:50%;margin:0 12px;background:{c if k == key else "#1a1a1a"};'
         f'box-shadow:{"0 0 26px " + c if k == key else "inset 0 0 8px #000"};border:2px solid #2b2b2b"></div>'
@@ -44,6 +49,7 @@ def sign():
             <div style="width:60px;height:1px;background:{lamp};opacity:.5;margin:26px auto"></div>
             <div style="font-size:clamp(1.3rem,3.4vw,2.4rem);font-weight:600;letter-spacing:.04em">{vi}</div>
             <div style="font-size:clamp(1rem,2.4vw,1.6rem);opacity:.85;margin-top:10px;letter-spacing:.06em">{en}</div>
+            {wait_html}
           </div>
         </div>
         """,

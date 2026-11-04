@@ -457,3 +457,85 @@ def logout():
     st.session_state.clear()
     st.query_params.clear()
     st.rerun()
+
+
+# ------------------------------------------------------------- so do cau truc quan
+LEVEL_COLOR = {"OK": C["ok"], "WARNING": C["warn"], "ALERT": C["warn"], "CRITICAL": C["danger"]}
+
+
+def bridge_svg(count: int, cap: int, level: str = "OK", in_rate=None, out_rate=None) -> str:
+    """So do Chua Cau: moi cham = 1 nguoi dang tren cau, mau theo muc canh bao."""
+    col = LEVEL_COLOR.get(level, C["ok"])
+    n = max(0, int(count))
+    slots = max(cap, n)
+    dots = []
+    for i in range(min(n, 60)):
+        t = (i + 0.5) / max(slots, 1)
+        x = 110 + t * 380
+        y = 150 - 46 * (1 - (2 * t - 1) ** 2) - (10 if i % 2 else 0)
+        dots.append(f'<circle cx="{x:.1f}" cy="{y:.1f}" r="6" fill="{col}" opacity=".92"><animate attributeName="r" '
+                    f'values="6;6.6;6" dur="{2 + (i % 5) * .3:.1f}s" repeatCount="indefinite"/></circle>')
+    pct = min(100, round(n / cap * 100)) if cap else 0
+    rate_in = "" if in_rate is None else f"vào {str(in_rate).replace('.', ',')}/phút"
+    rate_out = "" if out_rate is None else f"ra {str(out_rate).replace('.', ',')}/phút"
+    return f"""
+<svg viewBox="0 0 600 246" width="100%" xmlns="http://www.w3.org/2000/svg" style="display:block">
+  <defs><linearGradient id="w" x1="0" x2="0" y1="0" y2="1"><stop offset="0" stop-color="#C9D8D5"/><stop offset="1" stop-color="#EEF2EF"/></linearGradient></defs>
+  <rect x="0" y="182" width="600" height="48" fill="url(#w)" opacity=".55"/>
+  <path d="M0 196 Q50 190 100 196 T200 196 T300 196 T400 196 T500 196 T600 196" stroke="#9FB6B2" fill="none" stroke-width="1"/>
+  <path d="M60 172 Q300 70 540 172" stroke="{C['wood']}" stroke-width="7" fill="none" stroke-linecap="round"/>
+  <path d="M60 182 Q300 92 540 182" stroke="{C['wood']}" stroke-width="2" fill="none" opacity=".5"/>
+  <path d="M96 118 L300 40 L504 118" stroke="{C['oxblood']}" stroke-width="3" fill="none" stroke-linejoin="round"/>
+  <path d="M260 56 L300 26 L340 56" stroke="{C['oxblood']}" stroke-width="3" fill="none"/>
+  <path d="M120 112 V150 M200 84 V128 M300 62 V112 M400 84 V128 M480 112 V150" stroke="{C['wood']}" stroke-width="2" opacity=".55"/>
+  {''.join(dots)}
+  <text x="22" y="200" font-family="Be Vietnam Pro" font-size="12" fill="{C['muted']}">CHÂN CẦU 1</text>
+  <text x="578" y="200" text-anchor="end" font-family="Be Vietnam Pro" font-size="12" fill="{C['muted']}">CHÂN CẦU 2</text>
+  <text x="22" y="218" font-family="Be Vietnam Pro" font-size="12" fill="{C['teal']}">{rate_in}</text>
+  <text x="578" y="218" text-anchor="end" font-family="Be Vietnam Pro" font-size="12" fill="{C['teal']}">{rate_out}</text>
+  <text x="300" y="238" text-anchor="middle" font-family="Cormorant Garamond, serif" font-size="22" font-weight="600" fill="{col}">{n} / {cap} người · {pct}%</text>
+</svg>"""
+
+
+TONE_MARK = {"up": ("▲", C["ok"]), "down": ("▼", C["danger"]), "warn": ("!", C["warn"]), "info": ("i", C["teal"])}
+
+
+def insight_list(items):
+    rows = []
+    for it in items:
+        mark, col = TONE_MARK.get(it["tone"], TONE_MARK["info"])
+        rows.append(f'<div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--line)">'
+                    f'<div style="flex:0 0 22px;height:22px;border:1px solid {col};color:{col};font-size:.7rem;font-weight:700;'
+                    f'display:flex;align-items:center;justify-content:center;margin-top:2px">{mark}</div>'
+                    f'<div><div style="font-weight:600;font-size:.9rem">{it["title"]}</div>'
+                    f'<div style="color:#5F554B;font-size:.88rem;line-height:1.55">{it["text"]}</div></div></div>')
+    st.markdown("".join(rows), unsafe_allow_html=True)
+
+
+def alert_watcher():
+    """Thong bao noi (toast) o MOI trang khi co su co Do moi, doan khach lon, mat tin hieu camera."""
+    @st.fragment(run_every=5)
+    def _watch():
+        try:
+            incidents = api_get("/incidents", {"status": "open"})
+            events = api_get("/system_events", {"limit": 15})
+        except ApiError:
+            return
+        seen = st.session_state.setdefault("_seen_alerts", None)
+        current = {f"i{i['id']}" for i in incidents} | {f"e{e['id']}" for e in events}
+        if seen is None:                      # lan dau mo trang: chi ghi nho, khong bao lai chuyen cu
+            st.session_state["_seen_alerts"] = current
+        else:
+            for i in incidents:
+                if f"i{i['id']}" not in seen:
+                    st.toast(f"**Cảnh báo Đỏ · sự cố #{i['id']}** — {i['peak_count']} người trên cầu. "
+                             "Mở trang Trực ca để xác nhận.", icon=":material/warning:")
+            for e in events:
+                if f"e{e['id']}" not in seen and e["event_type"] in ("GROUP_DETECTED", "CAMERA_LOST", "WARNING"):
+                    st.toast(f"**{e['label']}** — {(e['message'] or '').replace('[SmartCau AI] ', '')[:110]}",
+                             icon=":material/groups:" if e["event_type"] == "GROUP_DETECTED" else ":material/notifications:")
+            st.session_state["_seen_alerts"] = seen | current
+        if incidents:
+            st.markdown(f'<div style="margin-top:10px;padding:8px 10px;border:1px solid #8E2418;background:rgba(142,36,24,.25);'
+                        f'color:#F3D9D3;font-size:.8rem">● {len(incidents)} sự cố đang mở</div>', unsafe_allow_html=True)
+    _watch()

@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from backend.report_export import report_tables, to_excel, to_pdf
-from common import (C, HAS_PLOTLY, ApiError, api_get_bytes, api_post, empty, fmt_duration, fmt_int, fmt_pct,
+from common import (C, HAS_PLOTLY, ApiError, insight_list, api_get_bytes, api_post, empty, fmt_duration, fmt_int, fmt_pct,
                     fmt_time, has_role, kpi, kpi_row, local_today, note, page_header, safe_get, section, style_fig)
 
 if HAS_PLOTLY:
@@ -51,6 +51,11 @@ kpi_row([
     kpi("Sự cố quá tải", fmt_int(r["incidents"]), f"phản hồi trung bình {fmt_duration(r['avg_handle_seconds'])}",
         "danger" if r["incidents"] else "ok"),
 ])
+
+ins = safe_get("/insights/summary")
+if ins:
+    with st.expander("Nhận định tự động hôm nay", expanded=True):
+        insight_list(ins["items"])
 
 section("Chỉ số an toàn", "theo bộ KPI Sprint 0")
 k = r["kpis"]

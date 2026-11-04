@@ -60,7 +60,8 @@ pip install "opencv-python>=4.9,<5"
 
 - **Đăng nhập lần đầu:** `admin` / `admin123`, hệ thống bắt đổi mật khẩu. Tạo thêm tài khoản Quản lý, Người trực ở trang **Tài khoản**.
 - `--source` nhận số webcam, đường dẫn video hoặc địa chỉ `rtsp://...`.
-- Trên cửa sổ camera: phím `l` kẻ lại vạch (click 2 đầu vạch rồi click 1 điểm ở phía cầu), `q` thoát.
+- Trên cửa sổ camera (**click vào cửa sổ trước** để nó nhận phím): **chữ L**, số 1 hoặc **chuột phải** = kẻ lại vạch (click 2 đầu vạch rồi click 1 điểm ở phía cầu), `R` = vạch mặc định, `Q` = thoát.
+- Tăng độ chính xác: `--imgsz 960`, `--model yolov8s-pose.pt`, `--face-detector retinaface`. Xem [docs/AI_CAI_THIEN.md](docs/AI_CAI_THIEN.md).
 - Không có camera: `python tools/simulate_bridge.py --random 200` để giả lập lượt qua cầu.
 - **Nhận tin Telegram:** đặt biến `TELEGRAM_BOT_TOKEN` trên máy chạy backend, thêm chat_id ở trang **Người nhận cảnh báo**.
 
@@ -77,6 +78,14 @@ pip install "opencv-python>=4.9,<5"
 - **Trong nước / nước ngoài là ước lượng**: mô hình chỉ phân được nhóm khu vực rộng và gộp khách Việt Nam với khách Hàn, Nhật, Trung, nên không xác định được quốc tịch.
 - Kết quả có độ tin cậy dưới 70% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
 - Hệ thống không lưu ảnh hay đặc trưng khuôn mặt; khung hình chỉ xử lý trong bộ nhớ.
+
+## Tính năng thông minh trên giao diện
+
+- **Sơ đồ cầu trực tiếp**: mỗi chấm là một người đang trên cầu, màu theo mức cảnh báo, kèm tốc độ vào/ra mỗi phút.
+- **Dự báo**: "cầu sẽ đầy sau bao nhiêu phút" theo xu hướng 5 phút; **thời gian chờ dự kiến** khi cầu đầy (FR-17, hiện cả trên Bảng LED); dự báo lượt vào từng giờ còn lại trong ngày (trung bình cùng thứ các tuần trước × mức đông hôm nay).
+- **Nhận định tự động**: so với cùng giờ tuần trước, khung giờ cao điểm sắp tới, cơ cấu khách, sự cố xử lý chậm…
+- **Thông báo nổi** ở mọi trang khi có sự cố Đỏ mới, đoàn khách lớn hoặc mất tín hiệu camera.
+- **Biểu đồ bấm được**: ở trang *Lượt qua cầu*, bấm vào một cột ngày/tháng/năm để xem chi tiết bên trong.
 
 ## Báo cáo ngày tự động và chỉ số KPI
 

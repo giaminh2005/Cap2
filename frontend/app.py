@@ -22,7 +22,7 @@ import streamlit as st
 st.set_page_config(page_title="SmartCau · Chùa Cầu Hội An", page_icon=":material/temple_buddhist:", layout="wide",
                    initial_sidebar_state="expanded")
 
-from common import (API_BASE, ROLE_VI, api_is_up, apply_theme, change_password_form,  # noqa: E402
+from common import (ROLE_VI, alert_watcher, api_is_up, apply_theme, change_password_form,  # noqa: E402
                     current_user, login_page, logout, restore_session)
 
 if not restore_session():
@@ -82,5 +82,6 @@ with st.sidebar:
         change_password_form()
     if c2.button("Đăng xuất", width="stretch"):
         logout()
+    alert_watcher()          # thong bao noi khi co su co moi, o bat ky trang nao
 
 page.run()
