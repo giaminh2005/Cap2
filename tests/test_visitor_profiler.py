@@ -35,6 +35,7 @@ class FakeEngine:
 
 def make(engine, **kw):
     posts = []
+    kw.setdefault("quality_gate", False)   # khung hinh gia 10x10 -> tat cong chat luong trong test logic
     p = VisitorProfiler(post=lambda path, payload: posts.append((path, payload)),
                         engine=engine, analyze_interval=0.0, **kw)
     return p, posts
@@ -119,7 +120,7 @@ def test_origin_disabled():
 
 def test_analyze_interval_limits_deepface_calls():
     eng = FakeEngine(ready_after=None)
-    p = VisitorProfiler(post=lambda *a: None, engine=eng, analyze_interval=0.3)
+    p = VisitorProfiler(post=lambda *a: None, engine=eng, analyze_interval=0.3, quality_gate=False)
     for i in range(30):                         # 30 frame trong 1 giay
         p.observe(6, FRAME, BOX, i / 30)
     assert eng.calls[6] <= 4
@@ -129,3 +130,32 @@ def test_pending_label():
     p, _ = make(FakeEngine(ready_after=5))
     p.observe(7, FRAME, BOX, 0)
     assert p.label(7) == ["ID 7", "Đang nhận diện 1/3"]
+
+
+def test_face_quality_gate():
+    from visitor_profiler import face_quality
+    rng = np.random.default_rng(0)
+    sharp = rng.integers(0, 255, (300, 300, 3), dtype=np.uint8)          # nhieu chi tiet
+    blurry = np.full((300, 300, 3), 128, np.uint8)                       # phang = nhoe
+    box = (100, 60, 100, 220)
+
+    def kps(nose_x=150, eye_gap=30, conf=0.9):
+        k = [[nose_x, 110], [150 - eye_gap / 2, 100], [150 + eye_gap / 2, 100]] + [[0, 0]] * 14
+        return k, [conf] * 3 + [0] * 14
+
+    assert face_quality(sharp, box, *kps()) == (True, "ok")
+    assert face_quality(sharp, box, *kps(eye_gap=8))[1] == "nho"
+    assert face_quality(sharp, box, *kps(nose_x=200))[1] == "nghieng"
+    assert face_quality(sharp, box, *kps(conf=0.2))[1] == "khong_thay_mat"
+    assert face_quality(blurry, box, *kps())[1] == "nhoe"
+    assert face_quality(sharp, (0, 0, 40, 60))[1] == "nho"               # khong keypoint, khung nho
+
+
+def test_rejected_frames_do_not_vote():
+    eng = FakeEngine(ready_after=1)
+    p = VisitorProfiler(post=lambda *a: None, engine=eng, analyze_interval=0.0)
+    blurry = np.full((300, 300, 3), 128, np.uint8)
+    k = [[150, 110], [135, 100], [165, 100]] + [[0, 0]] * 14
+    c = [0.9] * 3 + [0] * 14
+    p.observe(1, blurry, (100, 60, 100, 220), 0, k, c)
+    assert 1 not in eng.calls and p.label(1) == ["ID 1", "Hình bị nhòe"] and p.rejected["nhoe"] == 1

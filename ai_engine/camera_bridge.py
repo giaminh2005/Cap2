@@ -24,7 +24,7 @@ CHAY (tu THU MUC GOC Cap2/, backend phai chay truoc):
     python ai_engine/camera_bridge.py --camera-id 1 --source rtsp://user:pass@ip/stream
 
 KE VACH (FR-01): mac dinh vach ngang giua hinh, phia cau = nua duoi. Nhan
-'l' de ve lai bang chuot: click 2 dau vach, roi click 1 diem o PHIA CAU.
+L (hoac chuot phai) de ve lai bang chuot: click 2 dau vach, roi click 1 diem o PHIA CAU.
 Vach luu o ai_engine/config/line_cam<id>.json.
 
 Tuy chon:
@@ -32,9 +32,13 @@ Tuy chon:
     --no-origin      (kem --demographics) bo uoc luong trong/ngoai nuoc cho nhanh hon
     --no-alerts      camera 1 khong gui muc canh bao (mac dinh chi camera 1 gui)
     --group-size     so nguoi toi thieu cua 1 doan (mac dinh 10, BRULE-03)
-    --model          model YOLO (mac dinh yolov8n.pt, hoac yolov8n-pose.pt khi --demographics)
+    --model          model YOLO (mac dinh yolov8n.pt, hoac yolov8n-pose.pt khi --demographics).
+                     May manh: yolov8s.pt / yolo11s.pt (pose: yolov8s-pose.pt) chinh xac hon
+    --imgsz 960      anh vao YOLO lon hon -> dem tot hon nguoi o xa, dong (mac dinh 640)
+    --face-detector  yunet (mac dinh) | retinaface (chinh xac nhat, cham) | mtcnn | opencv
+    Xem docs/AI_CAI_THIEN.md de chon cau hinh theo may.
 
-Phim: 'q' thoat · 'l' ke lai vach · 'r' ve vach mac dinh.
+Phim (click vao cua so camera truoc): L / so 1 / chuot phai = ke lai vach · R = vach mac dinh · Q = thoat.
 """
 
 import argparse
@@ -133,16 +137,28 @@ def load_line(camera_id) -> LineCrossingCounter:
     return LineCrossingCounter()
 
 
-def draw_line_setup(cap, window, camera_id):
-    clicks = []
+def draw_line_setup(cap, window, camera_id, restore_cb=None):
+    """Ke lai vach bang chuot: click 2 dau vach, roi click 1 diem o PHIA CAU.
+    Vach hien xem truoc theo con tro. Esc / chuot phai = huy."""
+    clicks, cursor, cancel = [], [None], [False]
 
     def on_mouse(event, x, y, flags, param):
-        if event == cv2.EVENT_LBUTTONDOWN and len(clicks) < 3:
+        if event == cv2.EVENT_MOUSEMOVE:
+            cursor[0] = (x, y)
+        elif event == cv2.EVENT_LBUTTONDOWN and len(clicks) < 3:
             clicks.append((x, y))
+        elif event == cv2.EVENT_RBUTTONDOWN:
+            cancel[0] = True
 
     cv2.setMouseCallback(window, on_mouse)
-    hints = ["Click ĐẦU THỨ NHẤT của vạch", "Click ĐẦU THỨ HAI của vạch", "Click 1 điểm ở PHÍA CẦU"]
+    hints = ["Bước 1/3 · Click ĐẦU THỨ NHẤT của vạch", "Bước 2/3 · Click ĐẦU THỨ HAI của vạch",
+             "Bước 3/3 · Click 1 điểm ở PHÍA CẦU"]
     frame, layer = None, TextLayer()
+
+    def done(result):
+        cv2.setMouseCallback(window, restore_cb or (lambda *a: None))
+        return result
+
     while len(clicks) < 3:
         ok, f = cap.read()
         if ok:
@@ -150,28 +166,35 @@ def draw_line_setup(cap, window, camera_id):
         if frame is None:
             continue
         out = frame.copy()
+        overlay = out.copy()
+        cv2.rectangle(overlay, (0, 0), (out.shape[1], out.shape[0]), (20, 20, 20), -1)
+        cv2.addWeighted(overlay, 0.35, out, 0.65, 0, dst=out)
         for p in clicks:
             cv2.circle(out, p, 7, YELLOW, -1)
+        if len(clicks) == 1 and cursor[0]:
+            cv2.line(out, clicks[0], cursor[0], YELLOW, 2, cv2.LINE_AA)
         if len(clicks) >= 2:
-            cv2.line(out, clicks[0], clicks[1], YELLOW, 3)
-        layer.text(f"KẺ VẠCH CAMERA {camera_id}: {hints[len(clicks)]}   (Esc = hủy)", (12, 12),
-                   size=20, bold=True, bg=(30, 30, 30))
+            cv2.line(out, clicks[0], clicks[1], YELLOW, 3, cv2.LINE_AA)
+        if cursor[0]:
+            cv2.drawMarker(out, cursor[0], (255, 255, 255), cv2.MARKER_CROSS, 18, 1)
+        layer.text(f"KẺ VẠCH CAMERA {camera_id} · {hints[len(clicks)]}", (14, 12), size=19, bold=True,
+                   bg=(30, 30, 30))
+        layer.text("Esc hoặc chuột phải: hủy", (14, 48), size=14, bg=(30, 30, 30))
         layer.render(out)
         cv2.imshow(window, out)
-        if cv2.waitKey(30) & 0xFF == 27:
-            cv2.setMouseCallback(window, lambda *a: None)
-            return None
-    cv2.setMouseCallback(window, lambda *a: None)
+        if (cv2.waitKey(30) & 0xFF) == 27 or cancel[0]:
+            print(f"[CAMERA {camera_id}] Đã hủy kẻ vạch.")
+            return done(None)
     h, w = frame.shape[:2]
     p1, p2, b = [(x / w, y / h) for x, y in clicks]
     try:
         line = LineCrossingCounter(p1=p1, p2=p2, bridge_point=b)
     except ValueError as e:
         print(f"[CAMERA {camera_id}] Vạch không hợp lệ: {e}")
-        return None
+        return done(None)
     line.save(_line_path(camera_id))
     print(f"[CAMERA {camera_id}] Đã lưu vạch kẻ vào {_line_path(camera_id)}")
-    return line
+    return done(line)
 
 
 def draw_line_overlay(frame, layer, line: LineCrossingCounter):
@@ -211,6 +234,10 @@ def draw_hud(frame, layer, cam, state, level, thresholds, local_in, local_out, f
     while layer.measure(stats, small)[0] > fw - 24 and small > 10:
         small -= 1
     layer.text(stats, (12, fh - small - 16), size=small, bg=(25, 25, 25), pad=6)
+    hint = "L / chuột phải: kẻ vạch · R: mặc định · Q: thoát"
+    hs = max(11, small - 2)
+    layer.text(hint, (fw - layer.measure(hint, hs)[0] - 16, big + 34), size=hs, color=(220, 220, 220),
+               bg=(25, 25, 25), pad=4)
     if group_size >= 5:
         layer.text(f"Nhóm {group_size} người đang đi tới", (12, big + 36), size=small + 1, bold=True, bg=ORANGE, pad=5)
     if level == "CRITICAL":
@@ -236,6 +263,17 @@ def parse_args(argv=None):
     ap.add_argument("--no-alerts", action="store_true", help="Camera này không gửi mức cảnh báo")
     ap.add_argument("--group-size", type=int, default=10)
     ap.add_argument("--model", default=None)
+    ap.add_argument("--imgsz", type=int, default=640,
+                    help="Kich thuoc anh dua vao YOLO. 960 hoac 1280 dem tot hon nguoi o xa / dong (cham hon)")
+    ap.add_argument("--conf", type=float, default=0.35, help="Nguong tin cay phat hien nguoi")
+    ap.add_argument("--tracker", default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
+                                                      "trackers", "smartcau_botsort.yaml"),
+                    help="Tep cau hinh bo theo doi (botsort.yaml / bytetrack.yaml / tep rieng)")
+    ap.add_argument("--face-detector", default=os.environ.get("SMARTCAU_FACE_DETECTOR", "yunet"),
+                    choices=("yunet", "retinaface", "mtcnn", "opencv", "ssd", "mediapipe"),
+                    help="Bo tim khuon mat cua DeepFace. retinaface chinh xac nhat nhung cham nhat")
+    ap.add_argument("--no-face-gate", action="store_true",
+                    help="Tat cong chat luong mat (mac dinh chi phan tich khi mat du to, nhin thang, khong nhoe)")
     args = ap.parse_args(argv)
     if args.no_origin and not args.demographics:
         ap.error("--no-origin chỉ dùng kèm --demographics")
@@ -265,7 +303,10 @@ def main():
 
     profiler = None
     if args.demographics:
-        profiler = VisitorProfiler(post=_post, with_origin=not args.no_origin, camera_id=cam)
+        import age_gender_estimator
+        age_gender_estimator.DEFAULT_DETECTOR = args.face_detector
+        profiler = VisitorProfiler(post=_post, with_origin=not args.no_origin, camera_id=cam,
+                                   quality_gate=not args.no_face_gate)
         print(f"[CAMERA {cam}] Nhận diện giới tính, tuổi{'' if args.no_origin else ', trong/ngoài nước'}: BẬT.")
 
     model = YOLO(args.model)
@@ -279,6 +320,15 @@ def main():
     except cv2.error:
         print(OPENCV_FIX_MSG.format(ver=cv2.__version__))
         sys.exit(1)
+    edit_request = [False]
+
+    def on_main_mouse(event, x, y, flags, param):
+        if event == cv2.EVENT_RBUTTONDOWN:      # chuot phai -> ke lai vach
+            edit_request[0] = True
+
+    cv2.setMouseCallback(window, on_main_mouse)
+    print(f"[CAMERA {cam}] Phím tắt (click vào cửa sổ camera trước): L hoặc chuột phải = kẻ lại vạch · "
+          "R = vạch mặc định · Q = thoát.")
 
     state = _get("/bridge/state") or {"num1": 0, "num2": 0, "onbridge": 0, "dem": 0}
     api_ok = bool(_get("/health"))
@@ -321,7 +371,8 @@ def main():
             fps, frames, fps_t0 = frames / (now - fps_t0), 0, now
         fh, fw = frame.shape[:2]
 
-        results = model.track(frame, persist=True, classes=[0], conf=0.4, verbose=False)[0]
+        results = model.track(frame, persist=True, classes=[0], conf=args.conf, imgsz=args.imgsz,
+                              tracker=args.tracker, verbose=False)[0]
         out = frame.copy()
         draw_line_overlay(out, layer, line)
 
@@ -430,13 +481,16 @@ def main():
         layer.render(out)
         cv2.imshow(window, out)
         key = cv2.waitKey(1) & 0xFF
-        if key == ord("q"):
+        if key in (ord("q"), ord("Q"), 27):
             break
-        if key == ord("l"):
-            new_line = draw_line_setup(cap, window, cam)
+        # Phim L (chu L thuong / hoa), so 1, phim K, hoac CHUOT PHAI -> ke lai vach.
+        # Luu y: phai click vao cua so camera truoc de cua so nhan phim.
+        if key in (ord("l"), ord("L"), ord("1"), ord("k"), ord("K")) or edit_request[0]:
+            edit_request[0] = False
+            new_line = draw_line_setup(cap, window, cam, restore_cb=on_main_mouse)
             if new_line is not None:
                 line = new_line
-        if key == ord("r"):
+        if key in (ord("r"), ord("R")):
             try:
                 os.remove(_line_path(cam))
             except FileNotFoundError:

@@ -33,6 +33,50 @@ REGION_TO_ORIGIN = {"Dong A / Noi dia": "Trong nuoc", "Phuong Tay": "Nuoc ngoai"
 ORIGIN_MIN_SHARE = 0.55   # nhom khu vuc phai chiem >= 55% trong so phieu moi ket luan
 
 
+# ---------------------------------------------------------------- chat luong mat
+# Chi dua khung hinh vao DeepFace khi mat DU TO, NHIN GAN THANG, KHONG NHOE.
+# Khung hinh xau (nghieng, xa, mo do chuyen dong) la nguon chinh gay doan sai
+# gioi tinh / tuoi; bo qua chung lam phieu bau sach hon (xem docs/AI_CAI_THIEN.md).
+MIN_EYE_PX = 14          # khoang cach 2 mat toi thieu (px) ~ mat rong >= 35 px
+MIN_SHARPNESS = 35.0     # phuong sai Laplacian vung dau; thap = nhoe
+MIN_BOX_H = 110          # khi khong co keypoint (model khong phai pose): khung nguoi toi thieu (px)
+_NOSE, _LEYE, _REYE = 0, 1, 2
+
+
+def face_quality(frame, box, keypoints=None, kp_conf=None):
+    """Tra ve (dat?, ly_do). ly_do: 'ok' | 'nho' | 'nghieng' | 'nhoe' | 'khong_thay_mat'."""
+    import cv2
+    x, y, w, h = box
+    if keypoints is not None and kp_conf is not None and len(keypoints) > 2:
+        if min(kp_conf[_NOSE], kp_conf[_LEYE], kp_conf[_REYE]) < 0.5:
+            return False, "khong_thay_mat"              # quay lung / che mat
+        (nx, _), (lx, ly), (rx, ry) = keypoints[_NOSE], keypoints[_LEYE], keypoints[_REYE]
+        eye = ((lx - rx) ** 2 + (ly - ry) ** 2) ** 0.5
+        if eye < MIN_EYE_PX:
+            return False, "nho"
+        lo, hi = min(lx, rx), max(lx, rx)
+        if not (lo - 0.15 * eye <= nx <= hi + 0.15 * eye):
+            return False, "nghieng"                     # mui lech ra ngoai 2 mat -> nghieng manh
+        cx, cy, half = (lx + rx) / 2, (ly + ry) / 2, eye * 1.6
+        x0, y0, x1, y1 = int(cx - half), int(cy - half), int(cx + half), int(cy + half * 1.4)
+    else:
+        if h < MIN_BOX_H:
+            return False, "nho"
+        x0, y0, x1, y1 = x + w // 5, y, x + w - w // 5, y + max(20, h // 5)
+    fh, fw = frame.shape[:2]
+    crop = frame[max(0, y0):min(fh, y1), max(0, x0):min(fw, x1)]
+    if crop.size == 0:
+        return False, "khong_thay_mat"
+    sharp = cv2.Laplacian(cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY), cv2.CV_64F).var()
+    if sharp < MIN_SHARPNESS:
+        return False, "nhoe"
+    return True, "ok"
+
+
+QUALITY_HINT = {"nho": "Lại gần camera hơn", "nghieng": "Chờ nhìn thẳng", "nhoe": "Hình bị nhòe",
+                "khong_thay_mat": "Chưa thấy mặt"}
+
+
 def extract_keypoints(results, idx):
     """(keypoints_xy, keypoints_conf) cua nguoi thu idx tu ket qua YOLO-pose,
     hoac (None, None) neu model khong co keypoints (model detect thuong)."""
@@ -55,6 +99,7 @@ class _Track:
     entered_at: Optional[float] = None
     info: Optional[dict] = None
     region_votes: Dict[str, float] = field(default_factory=dict)
+    last_reject: Optional[str] = None
     done: bool = False
     saved: Optional[dict] = None
 
@@ -71,13 +116,15 @@ class VisitorProfiler:
 
     def __init__(self, post: Callable[[str, dict], object], engine=None, with_origin: bool = True,
                  camera_id: Optional[int] = None, analyze_interval: float = 0.3, give_up_sec: float = 5.0,
-                 gone_sec: float = 1.5, forget_sec: float = 30.0):
+                 gone_sec: float = 1.5, forget_sec: float = 30.0, quality_gate: bool = True):
         if engine is None:
             from demographics_engine import DemographicsEngine
             engine = DemographicsEngine(enable_region=with_origin)
         self.engine, self.post, self.with_origin, self.camera_id = engine, post, with_origin, camera_id
         self.analyze_interval, self.give_up_sec = analyze_interval, give_up_sec
         self.gone_sec, self.forget_sec = gone_sec, forget_sec
+        self.quality_gate = quality_gate
+        self.rejected = {}
         self._tracks: Dict[int, _Track] = {}
         self.saved_count = 0
         self.unknown_count = 0
@@ -95,6 +142,13 @@ class VisitorProfiler:
         if t.done or now - t.last_analyzed < self.analyze_interval:
             return
         t.last_analyzed = now
+        if self.quality_gate:
+            ok, why = face_quality(frame, box, keypoints, kp_conf)
+            if not ok:
+                t.last_reject = why
+                self.rejected[why] = self.rejected.get(why, 0) + 1
+                return
+        t.last_reject = None
         t.info = self.engine.update(tid, frame, box, keypoints=keypoints, kp_conf=kp_conf)
         region, conf = t.info.get("region"), float(t.info.get("region_confidence") or 0)
         if region:
@@ -156,6 +210,8 @@ class VisitorProfiler:
                 origin = res.get("origin") if t.saved is not None else self.origin_of(tid)
                 lines.append(ORIGIN_VI.get(origin, "Chưa rõ trong/ngoài nước"))
             return lines
+        if t.last_reject and not t.done:
+            return [head, QUALITY_HINT.get(t.last_reject, "Chờ thấy rõ mặt")]
         if t.info is not None and not t.done:
             return [head, f"Đang nhận diện {min(t.info.get('n_votes', 0), 3)}/3"]
         return None

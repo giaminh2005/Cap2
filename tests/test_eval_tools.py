@@ -53,3 +53,12 @@ def test_utkface_loader(tmp_path):
     assert len(rows) == 2 and edges is ed.PROJECT_EDGES
     asian = next(r for r in rows if r["group"] == "Asian")
     assert asian["true_gender"] == "Woman" and asian["true_origin"] == "Trong nuoc"
+
+
+def test_fit_age_calibration_fixes_regression_to_mean():
+    # DeepFace don tuoi ve giua: tuoi doan = 0.5 * that + 15
+    recs = [{"true_age_value": t, "pred_age_value": 0.5 * t + 15} for t in range(5, 80, 2)]
+    cal = ed.fit_age_calibration(recs)
+    assert abs(cal["a"] - 2.0) < 1e-6 and abs(cal["b"] + 30) < 1e-6
+    assert cal["mae_after"] < 0.01 < cal["mae_before"]
+    assert ed.fit_age_calibration(recs[:10]) is None

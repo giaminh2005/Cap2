@@ -26,6 +26,7 @@ Can cai deepface (pip install deepface tf-keras). Lan dau chay se tai model.
 
 import argparse
 import csv
+import json
 import os
 import random
 import sys
@@ -40,6 +41,7 @@ FAIRFACE_AGE = ["0-2", "3-9", "10-19", "20-29", "30-39", "40-49", "50-59", "60-6
 FAIRFACE_EDGES = [(0, 2), (3, 9), (10, 19), (20, 29), (30, 39), (40, 49), (50, 59), (60, 69), (70, 200)]
 PROJECT_AGE = ["0-5", "6-12", "13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65-69", "70+"]
 PROJECT_EDGES = [(0, 5), (6, 12), (13, 17), (18, 24), (25, 34), (35, 44), (45, 54), (55, 64), (65, 69), (70, 200)]
+FAIRFACE_MID = [1, 6, 15, 25, 35, 45, 55, 65, 75]       # tuoi giua moi nhom FairFace (de hoc hieu chinh)
 UTK_RACE = {"0": "White", "1": "Black", "2": "Asian", "3": "Indian", "4": "Others"}
 # ORIGIN_PROXY: tap cong khai KHONG co quoc tich. Dung race lam nhan xap xi giong cach he thong suy
 # "trong nuoc" (nhom Dong A) -> chi de tham khao, khong phai do chinh xac quoc tich.
@@ -101,6 +103,7 @@ def load_fairface(images, labels, limit, seed):
             rows.append({"path": os.path.join(images, r["file"]), "group": r["race"],
                          "true_gender": "Man" if r["gender"] == "Male" else "Woman",
                          "true_age": FAIRFACE_AGE.index(r["age"]) if r["age"] in FAIRFACE_AGE else -1,
+                         "true_age_value": FAIRFACE_MID[FAIRFACE_AGE.index(r["age"])] if r["age"] in FAIRFACE_AGE else None,
                          "true_origin": "Trong nuoc" if r["race"] in DOMESTIC_RACES else "Nuoc ngoai"})
     return _sample(rows, limit, seed), FAIRFACE_EDGES
 
@@ -115,6 +118,7 @@ def load_utkface(images, limit, seed):
         rows.append({"path": os.path.join(images, fn), "group": race,
                      "true_gender": "Man" if parts[1] == "0" else "Woman",
                      "true_age": age_bucket(int(parts[0]), PROJECT_EDGES),
+                     "true_age_value": int(parts[0]),
                      "true_origin": "Trong nuoc" if race in DOMESTIC_RACES else "Nuoc ngoai"})
     return _sample(rows, limit, seed), PROJECT_EDGES
 
@@ -124,6 +128,26 @@ def _sample(rows, limit, seed):
         random.Random(seed).shuffle(rows)
         rows = rows[:limit]
     return rows
+
+
+def fit_age_calibration(records):
+    """Hoc tuoi_that ~ a * tuoi_du_doan + b (binh phuong toi thieu) tren cac anh tim thay mat.
+    Tra ve dict {a, b, n, mae_before, mae_after} hoac None neu qua it du lieu."""
+    pairs = [(r["pred_age_value"], r["true_age_value"]) for r in records
+             if r.get("pred_age_value") is not None and r.get("true_age_value") is not None]
+    if len(pairs) < 30:
+        return None
+    n = len(pairs)
+    mx = sum(p for p, _ in pairs) / n
+    my = sum(t for _, t in pairs) / n
+    var = sum((p - mx) ** 2 for p, _ in pairs)
+    if var == 0:
+        return None
+    a = sum((p - mx) * (t - my) for p, t in pairs) / var
+    b = my - a * mx
+    before = sum(abs(p - t) for p, t in pairs) / n
+    after = sum(abs(min(95, max(1, a * p + b)) - t) for p, t in pairs) / n
+    return {"a": round(a, 4), "b": round(b, 3), "n": n, "mae_before": round(before, 2), "mae_after": round(after, 2)}
 
 
 def deepface_predictor(with_origin):
@@ -189,6 +213,9 @@ def main(argv=None):
     ap.add_argument("--seed", type=int, default=50)
     ap.add_argument("--no-origin", action="store_true", help="Bỏ đo trong/ngoài nước (nhanh hơn)")
     ap.add_argument("--out", default=None)
+    ap.add_argument("--save-calibration", action="store_true",
+                    help="Hoc he so hieu chinh tuoi va luu vao ai_engine/calibration/age_calibration.json "
+                         "(camera tu dung lan chay sau). Nen dung UTKFace vi co tuoi chinh xac.")
     args = ap.parse_args(argv)
 
     if args.dataset == "fairface":
@@ -200,17 +227,33 @@ def main(argv=None):
     if not rows:
         print("Không tìm thấy ảnh có nhãn hợp lệ.")
         return 1
+    if args.save_calibration:
+        import age_gender_estimator
+        age_gender_estimator._AGE_CALIB = None      # do tren tuoi GOC cua DeepFace de hoc hieu chinh
     predict = deepface_predictor(with_origin=not args.no_origin)
     records = []
     for i, r in enumerate(rows, 1):
         g, age, origin = predict(r["path"])
-        records.append({**r, "pred_gender": g, "pred_age": age_bucket(age, edges) if g else -1, "pred_origin": origin})
+        records.append({**r, "pred_gender": g, "pred_age": age_bucket(age, edges) if g else -1, "pred_origin": origin,
+                        "pred_age_value": age if g and age is not None and age >= 0 else None})
         if i % 50 == 0 or i == len(rows):
             print(f"  {i}/{len(rows)} ảnh")
     result = evaluate(records)
     out = args.out or os.path.join(os.path.abspath(args.images), f"ketqua_nhan_dien_{args.dataset}")
     print("\n" + write_report(out, args.dataset, result, "DeepFace + age_gender_estimator.py của dự án"))
     print(f"\nĐã lưu {out}.md và {out}.csv")
+    if args.save_calibration:
+        cal = fit_age_calibration(records)
+        if cal is None:
+            print("Không đủ dữ liệu (cần ≥ 30 ảnh tìm thấy mặt) để học hiệu chỉnh tuổi.")
+        else:
+            path = os.path.join(ROOT, "ai_engine", "calibration", "age_calibration.json")
+            os.makedirs(os.path.dirname(path), exist_ok=True)
+            with open(path, "w", encoding="utf-8") as f:
+                json.dump({**cal, "dataset": args.dataset, "created": datetime.now().isoformat(timespec="seconds")}, f, indent=2)
+            print(f"\nĐã lưu hiệu chỉnh tuổi: tuổi = {cal['a']} × tuổi_DeepFace + {cal['b']} "
+                  f"(sai số tuyệt đối TB {cal['mae_before']} → {cal['mae_after']} tuổi trên {cal['n']} ảnh) → {path}\n"
+                  "Chạy lại script KHÔNG có --save-calibration (trên tập ảnh khác) để đo kết quả sau hiệu chỉnh.")
     v = result["verdict"]
     return 0 if v["gender_pass"] and v["age_exact_pass"] and v["age_within1_pass"] else 2
 

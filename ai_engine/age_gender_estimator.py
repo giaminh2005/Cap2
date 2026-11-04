@@ -153,7 +153,39 @@ def _apply_clahe(image_bgr):
         return image_bgr
 
 
-def estimate_age_gender(image_bgr, detector_backend: str = "yunet", include_race: bool = False) -> List[Dict]:
+import json as _json
+import os as _os
+
+# Bo tim mat mac dinh (camera_bridge.py dat lai theo --face-detector).
+DEFAULT_DETECTOR = _os.environ.get("SMARTCAU_FACE_DETECTOR", "yunet")
+# Hieu chinh tuoi: tuoi_moi = a * tuoi_DeepFace + b, hoc tu tools/eval_demographics.py --save-calibration
+# (DeepFace hay doan tuoi don ve 25-35: tre bi doan gia hon, nguoi lon tuoi bi doan tre hon).
+_CALIB_FILE = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "calibration", "age_calibration.json")
+_AGE_CALIB = None
+
+
+def load_age_calibration(path: str = _CALIB_FILE):
+    global _AGE_CALIB
+    try:
+        with open(path, encoding="utf-8") as f:
+            d = _json.load(f)
+        _AGE_CALIB = (float(d["a"]), float(d["b"]))
+    except (OSError, ValueError, KeyError):
+        _AGE_CALIB = None
+    return _AGE_CALIB
+
+
+def calibrate_age(age: int) -> int:
+    if age is None or age < 0 or _AGE_CALIB is None:
+        return age
+    a, b = _AGE_CALIB
+    return int(round(min(95, max(1, a * age + b))))
+
+
+load_age_calibration()
+
+
+def estimate_age_gender(image_bgr, detector_backend: str = None, include_race: bool = False) -> List[Dict]:
     """Tra ve danh sach dict, moi phan tu ung voi 1 khuon mat THAT phat
     hien duoc (da loc bo cac ket qua "gia"):
        {"age": int, "age_range": str, "gender": "Man"/"Woman",
@@ -189,6 +221,7 @@ def estimate_age_gender(image_bgr, detector_backend: str = "yunet", include_race
     # "opencv" (Haar Cascade - luon co san, khong can tai them gi) cho CAC
     # LAN GOI SAU - tranh goi lai 1 backend da biet la hong MOI FRAME (vua
     # cham vua spam loi ra console lien tuc).
+    detector_backend = detector_backend or DEFAULT_DETECTOR
     effective_backend = "opencv" if _BACKEND_FALLBACK_TO_OPENCV else detector_backend
 
     actions = ["age", "gender", "race"] if include_race else ["age", "gender"]
@@ -228,7 +261,7 @@ def estimate_age_gender(image_bgr, detector_backend: str = "yunet", include_race
             max(gender_probs, key=gender_probs.get) if gender_probs else "Khong ro"
         )
         confidence = gender_probs.get(dominant_gender, 0.0)
-        age = int(r.get("age", -1))
+        age = calibrate_age(int(r.get("age", -1)))
         out.append({
             "age": age,
             "age_range": age_to_range(age),
