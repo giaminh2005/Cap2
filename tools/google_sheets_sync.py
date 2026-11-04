@@ -75,7 +75,7 @@ SCOPES = [
     "https://www.googleapis.com/auth/drive",
 ]
 
-VISIT_EVENTS_HEADER = ["id", "track_id", "timestamp", "age", "age_range", "gender"]
+VISIT_EVENTS_HEADER = ["ID", "Ma theo doi", "Thoi gian (UTC)", "Tuoi", "Nhom tuoi", "Gioi tinh", "Nguon khach", "Camera"]
 
 
 def _get_or_create_worksheet(spreadsheet, title: str, rows: int = 1000, cols: int = 10):
@@ -118,7 +118,8 @@ def sync_all(api_base: str, sheet_id: str, creds_path: str, limit: int = 5000) -
     ws_events = _get_or_create_worksheet(spreadsheet, "LuotKhach")
     ws_events.clear()
     rows = [VISIT_EVENTS_HEADER] + [
-        [e["id"], e["track_id"], e["timestamp"], e["age"], e["age_range"], e["gender"]]
+        [e["id"], e["track_id"], e["timestamp"], e["age"], e["age_range"], e["gender"],
+         e.get("origin"), e.get("camera_id")]
         for e in visit_events
     ]
     ws_events.update(rows)
@@ -134,10 +135,12 @@ def sync_all(api_base: str, sheet_id: str, creds_path: str, limit: int = 5000) -
         ["Thoi diem dong bo", sync_time],
         ["Dang co mat tren cau", stats["current_count"]],
         ["Trang thai", stats["current_status"]],
-        ["Tong luot da ghi nhan", stats["total_visitors_logged"]],
-        ["Tuoi trung binh", stats["average_age"]],
+        ["Luot vao cau hom nay", stats["entries_today"]],
+        ["Luot qua mat tien hom nay", stats["facade_today"]],
+        ["Ho so khach hom nay", stats["profiles_today"]],
+        ["Su co dang mo", stats["open_incidents"]],
     ]
-    for gender, count in (stats.get("gender_breakdown") or {}).items():
+    for gender, count in (stats.get("gender_today") or {}).items():
         summary_rows.append([f"So luot - {gender}", count])
 
     ws_summary = _get_or_create_worksheet(spreadsheet, "TongQuan")

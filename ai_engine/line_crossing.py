@@ -122,3 +122,37 @@ def foot_point(box, frame_w: int, frame_h: int) -> Point:
     """Diem chan (giua canh duoi) cua khung nguoi (x, y, w, h), chuan hoa 0..1."""
     x, y, w, h = box
     return ((x + w / 2) / frame_w, (y + h) / frame_h)
+
+
+class FacadeCounter:
+    """F1.4 / BRULE-10 - dem luot di qua VUNG MAT TIEN (phia ngoai vach) ma
+    KHONG vao cau. Moi track_id chi tinh 1 lan khi roi khoi khung hinh, ke ca
+    dung lai chup anh lau; nguoi da qua vach (vao hoac ra cau) khong tinh.
+
+        fc.update(tid, outside=True/False, now)   # moi frame
+        fc.mark_crossed(tid)                      # khi qua vach
+        n = fc.collect(now)                       # so luot mat tien vua ket thuc
+    """
+
+    def __init__(self, min_visible_sec: float = 1.0, gone_sec: float = 2.0):
+        self.min_visible_sec, self.gone_sec = min_visible_sec, gone_sec
+        self._t: Dict[int, dict] = {}
+
+    def update(self, tid: int, outside: bool, now: float):
+        t = self._t.setdefault(tid, {"first": now, "last": now, "outside": True, "crossed": False})
+        t["last"] = now
+        if not outside:
+            t["outside"] = False
+
+    def mark_crossed(self, tid: int):
+        if tid in self._t:
+            self._t[tid]["crossed"] = True
+
+    def collect(self, now: float) -> int:
+        n = 0
+        for tid, t in list(self._t.items()):
+            if now - t["last"] >= self.gone_sec:
+                if t["outside"] and not t["crossed"] and t["last"] - t["first"] >= self.min_visible_sec:
+                    n += 1
+                del self._t[tid]
+        return n

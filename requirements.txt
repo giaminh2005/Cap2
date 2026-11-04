@@ -53,9 +53,11 @@ trackers>=2.0                # NANG CAP: tu supervision>=0.31, thu vien nay GO B
 #   tinh (generate_dashboard.py) ma KHONG can trang quan ly web/dong bo Sheets,
 #   co the bo qua Nhom 4 nay (cai thieu se chi bao loi khi chay admin_web/app.py
 #   hoac google_sheets_sync.py, khong anh huong cac phan khac cua du an).
-streamlit>=1.40              # giao dien web nhieu trang (frontend/app.py, can st.navigation)
+streamlit>=1.50              # giao dien web nhieu trang (frontend/app.py, can st.navigation, st.fragment)
 plotly>=5.20                 # bieu do dep hon o trang "Tong quan" (co fallback neu thieu)
 streamlit-option-menu>=0.3.12  # thanh dieu huong sidebar dep hon (co fallback neu thieu)
+fpdf2>=2.7                   # xuat bao cao PDF co tieng Viet (trang "Bao cao dinh ky")
+openpyxl>=3.1                # xuat bao cao Excel
 gspread>=6.0                 # ghi/doc Google Sheets (tools/google_sheets_sync.py)
 google-auth>=2.29            # xac thuc Google Service Account cho gspread
 

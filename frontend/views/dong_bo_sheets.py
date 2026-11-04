@@ -1,73 +1,41 @@
 """
-frontend/views/dong_bo_sheets.py
---------------------------------
-Phu trach: MINH      Chuc nang: Tien ich - dong bo Google Sheets (ngoai BFD)
+frontend/views/dong_bo_sheets.py  —  Tien ich: dong bo Google Sheets (ngoai BFD)
+Phu trach: MINH.
 """
-# Ghi chu: Trang da chay, tuy chon.
 
 import os
-from datetime import datetime
+import sys
 
-import pandas as pd
 import streamlit as st
 
-from common import (ADMIN_API_KEY, AGE_ORDER, API_BASE, GENDER_LABEL_VI, GENDER_VALUE_FROM_VI,
-                    STATUS_META, _HAS_PLOTLY, api_get, api_put, page_header, render_metric,
-                    render_status_metric)
+from common import API_BASE, note, page_header
 
-if _HAS_PLOTLY:
-    import plotly.express as px
+sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "tools"))
 
+page_header("☁️", "Google Sheets", "Gửi lịch sử lượt khách và số người trên cầu sang Google Sheets để chia sẻ báo cáo")
 
-def page_dong_bo_sheets():
-    page_header(
-        "☁️", "Ket noi du lieu", "Dong bo Google Sheets",
-        "Gui du lieu van hanh sang Google Sheets de chia se bao cao voi giang vien va ban quan ly.",
-    )
-    st.markdown(
-        "Tinh nang TUY CHON - gui du lieu lich su luot khach va so lieu occupancy tu database "
-        "sang 1 Google Sheet that, de chia se/bao cao ma khong can mo truc tiep trang admin nay. "
-        "Xem huong dan cau hinh Google Cloud chi tiet trong file `tools/google_sheets_sync.py`."
-    )
+sheet_id = os.environ.get("GOOGLE_SHEETS_ID", "")
+creds_path = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_FILE", "")
 
-    sheet_id = os.environ.get("GOOGLE_SHEETS_ID", "")
-    creds_path = os.environ.get("GOOGLE_SHEETS_CREDENTIALS_FILE", "")
+if not sheet_id or not creds_path:
+    st.info("Chưa cấu hình. Đặt 2 biến môi trường **GOOGLE_SHEETS_ID** và **GOOGLE_SHEETS_CREDENTIALS_FILE** "
+            "trước khi chạy giao diện. Hướng dẫn tạo khóa Google Cloud nằm trong `tools/google_sheets_sync.py`.")
+    st.stop()
 
-    with st.container(border=True):
-        if not sheet_id or not creds_path:
-            st.info(
-                "Chua cau hinh GOOGLE_SHEETS_ID / GOOGLE_SHEETS_CREDENTIALS_FILE "
-                "(2 bien moi truong) - tinh nang nay se khong hoat dong cho den khi ban cau hinh.",
-                icon="ℹ️",
-            )
-            return
-
-        col1, col2 = st.columns(2)
-        col1.markdown(f"**Sheet ID:** `{sheet_id}`")
-        col2.markdown(f"[\U0001F517 Mo Google Sheet](https://docs.google.com/spreadsheets/d/{sheet_id}/edit)")
-        st.caption(f"File key: {creds_path}")
-
-        if st.button("\U0001F504 Dong bo ngay"):
+with st.container(border=True):
+    st.markdown(f"**Sheet:** [{sheet_id}](https://docs.google.com/spreadsheets/d/{sheet_id}/edit)")
+    st.caption(f"Tệp khóa: {creds_path}")
+    if st.button("🔄 Đồng bộ ngay", type="primary"):
+        try:
+            import google_sheets_sync
+        except ImportError as e:
+            st.error(f"Thiếu thư viện: {e}. Chạy: pip install gspread google-auth")
+            st.stop()
+        with st.spinner("Đang đồng bộ..."):
             try:
-                import google_sheets_sync  # noqa: import tai thoi diem dung
-            except ImportError as e:
-                st.error(
-                    f"Chua cai du thu vien cho Google Sheets: {e}. "
-                    "Chay: pip install gspread google-auth"
-                )
-                return
+                res = google_sheets_sync.sync_all(api_base=API_BASE, sheet_id=sheet_id, creds_path=creds_path)
+                st.success(f"Đồng bộ thành công lúc {res['last_sync']}: {res['visit_events_synced']} lượt khách.")
+            except Exception as e:
+                st.error(f"Đồng bộ thất bại: {e}")
 
-            with st.spinner("Dang dong bo..."):
-                try:
-                    result = google_sheets_sync.sync_all(
-                        api_base=API_BASE, sheet_id=sheet_id, creds_path=creds_path,
-                    )
-                    st.success(
-                        f"Dong bo thanh cong luc {result['last_sync']}: "
-                        f"{result['visit_events_synced']} luot khach."
-                    )
-                except Exception as e:
-                    st.error(f"Dong bo that bai: {e}")
-
-
-page_dong_bo_sheets()
+note("Chỉ dữ liệu đếm và nhãn ước lượng được gửi đi, không có hình ảnh.")

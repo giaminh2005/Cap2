@@ -1,5 +1,5 @@
 """
-tests/test_visitor_profiler.py  —  Kiem thu lap ho so nhan khau hoc (F3.2, FR-09, BRULE-06, NFR-05)
+tests/test_visitor_profiler.py  —  Kiem thu lap ho so nhan khau hoc (F3.2, FR-09, BRULE-06)
 Dung engine GIA (khong can DeepFace) de kiem tra logic.
 CHAY: pytest tests/test_visitor_profiler.py -q
 """
@@ -11,7 +11,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "ai_engine"))
 
-from visitor_profiler import VisitorProfiler, blur_faces, face_rect  # noqa: E402
+from visitor_profiler import VisitorProfiler  # noqa: E402
 
 
 class FakeEngine:
@@ -51,11 +51,12 @@ def test_profile_saved_only_after_entering():
         p.observe(1, FRAME, BOX, t)
     assert posts == []
     p.mark_entered(1, 5)
-    assert posts == [("/visit_events", {"track_id": 1, "age": 28, "age_range": "25-34", "gender": "Woman"})]
+    assert posts == [("/visit_events", {"track_id": 1, "age": 28, "age_range": "25-34", "gender": "Woman",
+                                        "origin": None, "camera_id": None})]
     p.observe(1, FRAME, BOX, 6)
     p.mark_entered(1, 7)
     assert len(posts) == 1                      # khong luu lap
-    assert p.label(1) == ["VAO - ID 1", "Nu", "25-34"]
+    assert p.label(1) == ["VÀO CẦU · ID 1", "Nữ · 25-34", "Chưa rõ trong/ngoài nước"]
 
 
 def test_unknown_when_confidence_never_reached():
@@ -68,8 +69,9 @@ def test_unknown_when_confidence_never_reached():
         p.step(t)
     assert posts == []
     p.step(6)
-    assert posts == [("/visit_events", {"track_id": 2, "age": None, "age_range": "Khong xac dinh", "gender": None})]
-    assert p.label(2) == ["VAO - ID 2", "Khong xac dinh"]
+    assert posts == [("/visit_events", {"track_id": 2, "age": None, "age_range": "Khong xac dinh", "gender": None,
+                                        "origin": None, "camera_id": None})]
+    assert p.label(2) == ["VÀO CẦU · ID 2", "Không xác định"]
 
 
 def test_unknown_when_person_leaves_view_before_ready():
@@ -93,16 +95,26 @@ def test_exit_stops_analysis_and_reentry_resumes():
     assert posts and posts[0][1]["gender"] == "Woman"
 
 
-def test_region_only_as_aggregate_when_enabled():
-    p, posts = make(FakeEngine(ready_after=1, region="Phuong Tay"), enable_region=True)
+def test_origin_shown_and_saved():
+    """Nhom Dong A -> 'Trong nuoc', con lai -> 'Nuoc ngoai'; hien ngay khi du tin cay."""
+    p, posts = make(FakeEngine(ready_after=1, region="Phuong Tay"))
     p.observe(5, FRAME, BOX, 0)
+    assert p.label(5) == ["ID 5", "Nữ · 25-34", "Nước ngoài"]      # hien truoc khi vao cau
+    assert posts == []
     p.mark_entered(5, 1)
-    assert ("/region_stats", {"region": "Phuong Tay"}) in posts
-    assert "region" not in posts[0][1]          # ho so ca nhan KHONG co khu vuc
-    p2, posts2 = make(FakeEngine(ready_after=1, region="Phuong Tay"), enable_region=False)
-    p2.observe(5, FRAME, BOX, 0)
-    p2.mark_entered(5, 1)
-    assert all(path != "/region_stats" for path, _ in posts2)
+    assert posts[0][1]["origin"] == "Nuoc ngoai"
+    assert p.label(5)[0] == "VÀO CẦU · ID 5"
+    p2, posts2 = make(FakeEngine(ready_after=1, region="Dong A / Noi dia"))
+    p2.observe(1, FRAME, BOX, 0)
+    p2.mark_entered(1, 0.5)
+    assert posts2[0][1]["origin"] == "Trong nuoc"
+
+
+def test_origin_disabled():
+    p, posts = make(FakeEngine(ready_after=1, region="Phuong Tay"), with_origin=False)
+    p.observe(1, FRAME, BOX, 0)
+    p.mark_entered(1, 0.5)
+    assert posts[0][1]["origin"] is None and p.label(1) == ["VÀO CẦU · ID 1", "Nữ · 25-34"]
 
 
 def test_analyze_interval_limits_deepface_calls():
@@ -113,20 +125,7 @@ def test_analyze_interval_limits_deepface_calls():
     assert eng.calls[6] <= 4
 
 
-def test_face_blur_uses_pose_keypoints_and_changes_only_face():
-    frame = np.zeros((200, 200, 3), np.uint8)
-    frame[::2, :] = 255                         # soc ngang de lam mo co tac dung
-    before = frame.copy()
-    kps = [[100, 40], [95, 35], [105, 35], [90, 38], [110, 38]] + [[0, 0]] * 12
-    conf = [0.9] * 5 + [0.0] * 12
-    rect = face_rect((60, 20, 80, 170), kps, conf)
-    x0, y0, x1, y1 = rect
-    assert x0 < 90 and x1 > 110 and y0 < 35 and y1 > 40
-    blur_faces(frame, [rect])
-    assert not np.array_equal(frame[y0:y1, x0:x1], before[y0:y1, x0:x1])
-    assert np.array_equal(frame[y1 + 5:, :], before[y1 + 5:, :])
-
-
-def test_face_rect_fallback_without_keypoints():
-    x0, y0, x1, y1 = face_rect((50, 20, 40, 160))
-    assert y0 == 20 and 20 < y1 <= 20 + 160 * 0.5 and 50 <= x0 < x1 <= 90
+def test_pending_label():
+    p, _ = make(FakeEngine(ready_after=5))
+    p.observe(7, FRAME, BOX, 0)
+    assert p.label(7) == ["ID 7", "Đang nhận diện 1/3"]

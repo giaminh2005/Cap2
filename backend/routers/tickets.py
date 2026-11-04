@@ -140,6 +140,10 @@ def reconciliation(date: str = "", db: Session = Depends(get_db)):
 
     entries_total = sum(entries_by_hour.values())
     tickets_total = daily if daily is not None else (sum(hourly.values()) if hourly else None)
+    compared_entries = entries_total
+    if daily is None and hourly:
+        # chi so sanh nhung gio DA nhap so ve, tranh lech do gio chua nhap
+        compared_entries = sum(entries_by_hour.get(h, 0) for h in hourly)
     rows = []
     if hourly:
         for h in sorted(set(entries_by_hour) | set(hourly)):
@@ -155,7 +159,8 @@ def reconciliation(date: str = "", db: Session = Depends(get_db)):
         "mode": "hour" if hourly and daily is None else "day",
         "entries_counted": entries_total,
         "tickets_sold": tickets_total,
-        "gap": entries_total - tickets_total if tickets_total is not None else None,
-        "gap_rate_pct": _rate(entries_total, tickets_total) if tickets_total is not None else None,
+        "compared_entries": compared_entries,
+        "gap": compared_entries - tickets_total if tickets_total is not None else None,
+        "gap_rate_pct": _rate(compared_entries, tickets_total) if tickets_total is not None else None,
         "by_hour": rows,
     }

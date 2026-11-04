@@ -1,97 +1,108 @@
 """
-frontend/views/luot_qua_cau.py
-------------------------------
-Phu trach: MINH      Chuc nang: F1.2, F1.3, F5.1 (FR-02, FR-03, FR-10)
-API dung: GET /bridge/state, GET /bridge/stats   (routers/bridge.py)
-
-So khach dang tren cau tu 2 camera chan cau (onbridge = num1 + num2), luot
-qua cau trong ngay (dem) va thong ke theo gio / ngay / thang / nam /
-khoang thoi gian tuy chon.
+frontend/views/luot_qua_cau.py  —  MODULE M1 · F1.2, F1.3 (FR-02, FR-03)
+Phu trach: MINH.
+onbridge = num1 + num2 tu 2 camera chan cau, luot vao trong ngay (dem) va
+thong ke theo gio / ngay / thang / nam / khoang thoi gian tuy chon.
 """
 
-from datetime import date, timedelta
+from datetime import timedelta
 
 import pandas as pd
 import streamlit as st
 
-from common import _HAS_PLOTLY, api_get, page_header, render_metric
+from common import (COLORS, HAS_PLOTLY, ApiError, api_post, fmt_int, has_role, kpi, kpi_row, local_today,
+                    note, page_header, safe_get, style_fig)
 
-if _HAS_PLOTLY:
-    import plotly.express as px
+if HAS_PLOTLY:
+    import plotly.graph_objects as go
 
-page_header("🌉", "2 camera chan cau", "Luot qua cau",
-            "So khach dang tren cau va so luot vao cau theo thoi gian.")
+page_header("🌉", "Lượt qua cầu", "Số khách trên cầu từ 2 camera chân cầu và thống kê lượt vào theo thời gian")
 
 
 @st.fragment(run_every=2)
 def live_state():
-    s, err = api_get("/bridge/state")
-    if err:
-        st.error(err)
+    s = safe_get("/bridge/state")
+    if s is None:
         return
-    st.markdown(
-        f"""
-        <div class="hoian-kpi-row" style="grid-template-columns: repeat(4, 1fr); margin-bottom:16px;">
-            {render_metric("🧍 Dang tren cau (onbridge)", s["onbridge"])}
-            {render_metric("📷 Camera 1 (num1)", s["num1"])}
-            {render_metric("📷 Camera 2 (num2)", s["num2"])}
-            {render_metric("🎟️ Luot vao hom nay (dem)", s["dem"], f"· {s['date']}")}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    kpi_row([
+        kpi("Đang trên cầu (onbridge)", fmt_int(s["onbridge"]), "= num1 + num2", "primary"),
+        kpi("Camera 1 (num1)", fmt_int(s["num1"]), "vào − ra ở chân cầu 1", "info"),
+        kpi("Camera 2 (num2)", fmt_int(s["num2"]), "vào − ra ở chân cầu 2", "info"),
+        kpi("Lượt vào hôm nay (dem)", fmt_int(s["dem"]), f"ngày {s['date'][8:]}/{s['date'][5:7]}/{s['date'][:4]}", "ok"),
+    ])
 
 
 live_state()
+note("Khách đi qua vạch về phía cầu: <b>num += 1, dem += 1</b>. Đi qua vạch ra ngoài: <b>num −= 1</b>. "
+     "Khi onbridge về 0 (hoặc âm do camera bỏ sót), hệ thống đặt lại num1 = num2 = 0. "
+     "<b>dem</b> tự về 0 lúc 0 giờ mỗi ngày.")
 
-GROUPS = {"Theo gio": "hour", "Theo ngay": "day", "Theo thang": "month", "Theo nam": "year"}
-today = date.today()
+if has_role("admin", "quan_ly"):
+    with st.expander("Đặt lại số người trên cầu (khi đếm tay thấy lệch)"):
+        c1, c2 = st.columns([2, 1])
+        also_dem = c1.checkbox("Đặt lại cả lượt vào hôm nay")
+        if c2.button("Đặt lại về 0", type="primary"):
+            try:
+                api_post("/bridge/reset", params={"reset_dem": also_dem})
+                st.success("Đã đặt lại.")
+            except ApiError as e:
+                st.error(str(e))
 
+st.markdown("#### Thống kê lượt vào cầu")
+GROUPS = {"Theo giờ": "hour", "Theo ngày": "day", "Theo tháng": "month", "Theo năm": "year"}
+today = local_today()
 with st.container(border=True):
     c1, c2 = st.columns([1, 2])
-    group_vi = c1.selectbox("Gom nhom", list(GROUPS))
+    group_vi = c1.selectbox("Gom nhóm", list(GROUPS), index=1)
     group = GROUPS[group_vi]
-    default_from = {"hour": today, "day": today - timedelta(days=29),
-                    "month": today.replace(month=1, day=1), "year": today.replace(year=today.year - 4, month=1, day=1)}[group]
-    picked = c2.date_input("Khoang thoi gian", value=(default_from, today), format="DD/MM/YYYY")
+    default_from = {"hour": today, "day": today - timedelta(days=29), "month": today.replace(month=1, day=1),
+                    "year": today.replace(year=today.year - 4, month=1, day=1)}[group]
+    picked = c2.date_input("Khoảng thời gian", value=(default_from, today), format="DD/MM/YYYY", key=f"range_{group}")
 
 if not isinstance(picked, (tuple, list)) or len(picked) != 2:
-    st.info("Chon ngay bat dau va ngay ket thuc.")
+    st.info("Chọn ngày bắt đầu và ngày kết thúc.")
     st.stop()
 
-data, err = api_get("/bridge/stats", params={"group": group, "date_from": picked[0].isoformat(),
-                                             "date_to": picked[1].isoformat()})
-if err:
-    st.error(err)
+data = safe_get("/bridge/stats", {"group": group, "date_from": picked[0].isoformat(), "date_to": picked[1].isoformat()})
+if data is None:
     st.stop()
 
-st.markdown(
-    f"""
-    <div class="hoian-kpi-row" style="grid-template-columns: repeat(2, 1fr); margin:12px 0 16px 0;">
-        {render_metric("Tong luot VAO cau", f"{data['total_entries']:,}".replace(",", "."))}
-        {render_metric("Tong luot RA", f"{data['total_exits']:,}".replace(",", "."))}
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+days = (picked[1] - picked[0]).days + 1
+kpi_row([
+    kpi("Tổng lượt vào cầu", fmt_int(data["total_entries"]), f"{days} ngày", "primary"),
+    kpi("Tổng lượt ra", fmt_int(data["total_exits"]), "", "info"),
+    kpi("Trung bình mỗi ngày", fmt_int(round(data["total_entries"] / days)), "lượt vào", "ok"),
+])
 
 if not data["rows"]:
-    st.info("Chua co luot qua cau nao trong khoang thoi gian nay.")
+    st.info("Chưa có lượt qua cầu nào trong khoảng thời gian này.")
     st.stop()
 
-df = pd.DataFrame(data["rows"]).rename(columns={
-    "period": "Thoi gian", "entries": "Luot vao", "exits": "Luot ra",
-    "entries_cam1": "Vao o camera 1", "entries_cam2": "Vao o camera 2",
-})
 
-if _HAS_PLOTLY:
-    fig = px.bar(df, x="Thoi gian", y=["Vao o camera 1", "Vao o camera 2"],
-                 labels={"value": "Luot vao", "variable": ""}, barmode="stack")
-    fig.update_layout(height=360, margin=dict(l=10, r=10, t=10, b=10), legend_title_text="")
-    st.plotly_chart(fig, use_container_width=True)
-else:
-    st.bar_chart(df.set_index("Thoi gian")[["Vao o camera 1", "Vao o camera 2"]])
+def label(period: str) -> str:
+    if group == "hour":
+        return f"{period[11:13]}h {period[8:10]}/{period[5:7]}"
+    if group == "day":
+        return f"{period[8:10]}/{period[5:7]}/{period[:4]}"
+    if group == "month":
+        return f"Tháng {period[5:7]}/{period[:4]}"
+    return f"Năm {period}"
 
-st.dataframe(df, use_container_width=True, hide_index=True)
-st.download_button("⬇️ Xuat CSV", data=df.to_csv(index=False).encode("utf-8-sig"),
+
+df = pd.DataFrame(data["rows"])
+df["Thời gian"] = df["period"].map(label)
+with st.container(border=True):
+    if HAS_PLOTLY:
+        fig = go.Figure()
+        fig.add_bar(x=df["Thời gian"], y=df["entries_cam1"], name="Vào ở chân cầu 1", marker_color=COLORS["primary"])
+        fig.add_bar(x=df["Thời gian"], y=df["entries_cam2"], name="Vào ở chân cầu 2", marker_color=COLORS["ochre"])
+        fig.update_layout(barmode="stack")
+        st.plotly_chart(style_fig(fig, 340), width="stretch")
+    else:
+        st.bar_chart(df.set_index("Thời gian")[["entries_cam1", "entries_cam2"]])
+
+table = df[["Thời gian", "entries", "exits", "entries_cam1", "entries_cam2"]].rename(columns={
+    "entries": "Lượt vào", "exits": "Lượt ra", "entries_cam1": "Vào ở chân cầu 1", "entries_cam2": "Vào ở chân cầu 2"})
+st.dataframe(table, width="stretch", hide_index=True)
+st.download_button("⬇️ Xuất CSV", data=table.to_csv(index=False).encode("utf-8-sig"),
                    file_name=f"luot_qua_cau_{group}_{picked[0]}_{picked[1]}.csv", mime="text/csv")

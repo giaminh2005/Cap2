@@ -1,136 +1,100 @@
 """
-frontend/views/tong_quan.py
----------------------------
-Phu trach: KHANH      Chuc nang: F5.1 Hien thi so lieu truc tiep (FR-10) · PB-05
+frontend/views/tong_quan.py  —  MODULE M6 · F5.1 Dashboard truc tiep (FR-10, AC-06.1)
+Phu trach: KHANH.
+So nguoi hien tai, muc canh bao, dien bien 60 phut, su co dang mo, 3 bo dem
+tach rieng (tren cau / luot vao hom nay / luot mat tien). Tu cap nhat 3 giay.
 """
-# Ghi chu: Trang da chay. Viec cua Khanh: them bieu do so nguoi theo thoi gian (GET /stats/occupancy/history),
-#   them 5 su co gan nhat (GET /incidents), tu dong lam moi moi 5 giay.
-
-import os
-from datetime import datetime
 
 import pandas as pd
 import streamlit as st
 
-from common import (ADMIN_API_KEY, AGE_ORDER, API_BASE, GENDER_LABEL_VI, GENDER_VALUE_FROM_VI,
-                    STATUS_META, _HAS_PLOTLY, api_get, api_put, page_header, render_metric,
-                    render_status_metric)
+from common import (COLORS, GENDER_VI, HAS_PLOTLY, STATUS_META, alert_box, badge, capacity_bar, fmt_duration,
+                    fmt_int, fmt_time, kpi, kpi_row, page_header, safe_get, status_badge, style_fig, to_local)
 
-if _HAS_PLOTLY:
-    import plotly.express as px
+if HAS_PLOTLY:
+    import plotly.graph_objects as go
+
+page_header("🏯", "Tổng quan", "Tình hình Chùa Cầu theo thời gian thực · tự cập nhật mỗi 3 giây")
 
 
-def page_tong_quan():
-    page_header(
-        "\U0001F3EF", "Di san Hoi An", "Tong quan van hanh",
-        "Giam sat suc chua Chua Cau theo thoi gian thuc de bao ve di tich va an toan du khach.",
-    )
-
-    stats, err1 = api_get("/stats/current")
-    cfg, err2 = api_get("/config")
-    if err1 or err2:
-        st.error(err1 or err2)
+@st.fragment(run_every=3)
+def live():
+    cur = safe_get("/stats/current")
+    cfg = safe_get("/config")
+    if cur is None or cfg is None:
         return
-
-    threshold = cfg["alert_threshold"]
-    count = stats["current_count"]
-    ratio = count / threshold if threshold else 0
-    status = stats.get("current_status", "OK")
+    count, maximum = cur["current_count"], cfg["alert_threshold"]
+    status = cur["current_status"]
     meta = STATUS_META.get(status, STATUS_META["OK"])
-    avg_age = stats["average_age"]
-    avg_age_display = f"{avg_age}" if avg_age is not None else "N/A"
-    total_display = f'{stats["total_visitors_logged"]:,}'.replace(",", ".")
 
-    st.markdown(
-        f"""
-        <div class="hoian-kpi-row">
-            {render_metric("\U0001F465 Dang co mat", count, f"/ {threshold} nguoi")}
-            {render_status_metric("✨ Trang thai", status)}
-            {render_metric("\U0001F4DC Tong luot da ghi nhan", total_display)}
-            {render_metric("\U0001F382 Tuoi trung binh", avg_age_display)}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    if status == "CRITICAL":
+        alert_box(f"⛔ QUÁ TẢI: {count} người trên cầu (tối đa {maximum}). Tạm dừng cho khách lên cầu và xử lý sự cố.")
+    elif status in ("WARNING", "ALERT"):
+        alert_box(f"▲ Cầu sắp đầy: {count}/{maximum} người. Điều tiết khách đi chậm, không dừng lại trên cầu.", "warn")
+    if not cfg["is_open_now"]:
+        alert_box(f"Ngoài giờ hoạt động ({cfg['open_time']}–{cfg['close_time']}). Cảnh báo Vàng tạm không gửi tin nhắn.", "info")
 
-    bar_color = {
-        "ok": "var(--hoian-moss)", "warn": "var(--hoian-ochre)",
-        "alert": "var(--hoian-red)", "critical": "var(--hoian-red-dark)",
-    }[meta["badge"]]
-    width_pct = min(100, round(ratio * 100))
-    st.markdown(
-        f"""
-        <div class="hoian-progress-wrap">
-            <div class="hoian-progress-top">
-                <span>Suc chua di tich</span><span>{count}/{threshold} ({width_pct}%)</span>
-            </div>
-            <div class="hoian-progress-track">
-                <div class="hoian-progress-fill" style="width:{width_pct}%; background:{bar_color};"></div>
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    kpi_row([
+        kpi("Đang trên cầu", f"{count}<span style='font-size:1rem;color:var(--muted)'> / {maximum}</span>",
+            status_badge(status), meta["tone"]),
+        kpi("Lượt vào cầu hôm nay", fmt_int(cur["entries_today"]), "đếm bởi 2 camera chân cầu", "primary"),
+        kpi("Lượt qua mặt tiền", fmt_int(cur["facade_today"]), "đi ngang, không lên cầu", "info"),
+        kpi("Sự cố đang mở", fmt_int(cur["open_incidents"]),
+            "cần xác nhận ở trang Trực ca" if cur["open_incidents"] else "không có sự cố",
+            "danger" if cur["open_incidents"] else "ok"),
+    ])
+    capacity_bar(count, maximum)
+    if cur["status_stale"]:
+        st.caption("Chưa nhận được mức cảnh báo từ camera 1 trong 30 giây qua — kiểm tra trang Camera.")
+    else:
+        st.caption(f"Cập nhật lúc {fmt_time(cur['last_update'], '%H:%M:%S')} · Vàng từ {cfg['warning_threshold']} người, "
+                   f"Đỏ khi vượt {maximum} người liên tục 15 giây")
 
-    if status in ("ALERT", "CRITICAL"):
-        st.error(f"{meta['icon']} {meta['label']}: {count}/{threshold} nguoi dang tren cau.")
-    elif status == "WARNING":
-        st.warning(f"{meta['icon']} {meta['label']}: {count}/{threshold} nguoi dang tren cau.")
+    left, right = st.columns([2, 1])
+    with left, st.container(border=True):
+        st.markdown("**Diễn biến số người trên cầu · 60 phút gần nhất**")
+        hist = safe_get("/stats/occupancy/history", {"minutes": 60}) or []
+        if not hist:
+            st.info("Chưa có dữ liệu. Biểu đồ sẽ hiện khi camera chân cầu 1 chạy.")
+        elif HAS_PLOTLY:
+            df = pd.DataFrame(hist)
+            df["time"] = df["timestamp"].map(to_local)
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=df["time"], y=df["count"], mode="lines", line=dict(color=COLORS["primary"], width=2.5),
+                                     fill="tozeroy", fillcolor="rgba(142,42,31,.10)", name="Số người"))
+            fig.add_hline(y=maximum, line=dict(color=COLORS["danger"], dash="dash"), annotation_text=f"Tối đa {maximum}")
+            fig.add_hline(y=cfg["warning_threshold"], line=dict(color=COLORS["warn"], dash="dot"),
+                          annotation_text=f"Vàng {cfg['warning_threshold']}")
+            st.plotly_chart(style_fig(fig, 300, legend=False), width="stretch")
+        else:
+            st.line_chart(pd.DataFrame(hist).set_index("timestamp")["count"])
 
-    col_chart1, col_chart2 = st.columns(2)
-
-    with col_chart1:
+    with right:
         with st.container(border=True):
-            st.markdown("**\U0001F6BB Phan bo gioi tinh** (cac luot da ghi nhan)")
-            genders = stats.get("gender_breakdown") or {}
-            if genders:
-                df_gender = pd.DataFrame({
-                    "Gioi tinh": [GENDER_LABEL_VI.get(k, k) for k in genders.keys()],
-                    "So luot": list(genders.values()),
-                })
-                if _HAS_PLOTLY:
-                    fig = px.pie(
-                        df_gender, names="Gioi tinh", values="So luot", hole=0.5,
-                        color="Gioi tinh",
-                        color_discrete_map={"Nam": "#344B3B", "Nu": "#7A3028"},
-                    )
-                    fig.update_traces(textinfo="label+percent", textfont_size=13)
-                    fig.update_layout(
-                        showlegend=False, margin=dict(t=10, b=10, l=10, r=10), height=280,
-                        paper_bgcolor="rgba(0,0,0,0)", font=dict(family="Be Vietnam Pro", color="#563B2D"),
-                    )
-                    st.plotly_chart(fig, use_container_width=True)
-                else:
-                    st.bar_chart(df_gender.set_index("Gioi tinh"))
-            else:
-                st.info("Chua co du lieu gioi tinh nao duoc ghi nhan.")
-
-    with col_chart2:
+            st.markdown("**Sự cố đang mở**")
+            incidents = safe_get("/incidents", {"status": "open"}) or []
+            if not incidents:
+                st.markdown(badge("✓ Không có sự cố", "ok"), unsafe_allow_html=True)
+            for i in incidents:
+                st.markdown(f'<div class="sc-incident"><b>Sự cố #{i["id"]}</b> · cao nhất {i["peak_count"]} người<br>'
+                            f'<span style="color:var(--muted);font-size:.85rem">Từ {fmt_time(i["opened_at"], "%H:%M:%S")} · '
+                            f'{fmt_duration(i["duration_seconds"])} · '
+                            f'{"đã xác nhận bởi " + i["acked_by"] if i["acknowledged"] else "chưa xác nhận"}</span></div>',
+                            unsafe_allow_html=True)
         with st.container(border=True):
-            st.markdown("**\U0001F382 Phan bo do tuoi** (cac luot da ghi nhan)")
-            events, err = api_get("/visit_events", params={"limit": 2000})
-            if err:
-                st.caption("Khong tai duoc du lieu do tuoi.")
+            st.markdown("**Camera chân cầu**")
+            for c in safe_get("/bridge/cameras") or []:
+                tone = "ok" if c["online"] else "danger"
+                txt = f"Camera {c['camera_id']} · {'hoạt động · ' + str(c['fps']) + ' khung/giây' if c['online'] else 'mất tín hiệu'}"
+                st.markdown(badge(("● " if c["online"] else "■ ") + txt, tone), unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("**Khách vào hôm nay theo giới tính**")
+            g = cur.get("gender_today") or {}
+            if g:
+                st.markdown(" ".join(badge(f"{GENDER_VI.get(k, k)}: {v}", "info") for k, v in g.items()),
+                            unsafe_allow_html=True)
             else:
-                ages = [e.get("age_range") or "Khong ro" for e in (events or [])]
-                if ages:
-                    counts = pd.Series(ages).value_counts()
-                    ordered = [a for a in AGE_ORDER if a in counts.index]
-                    ordered += [a for a in counts.index if a not in AGE_ORDER]
-                    df_age = pd.DataFrame({"Khoang tuoi": ordered, "So luot": [counts[a] for a in ordered]})
-                    if _HAS_PLOTLY:
-                        fig2 = px.bar(df_age, x="Khoang tuoi", y="So luot", color_discrete_sequence=["#B77A2B"])
-                        fig2.update_layout(
-                            margin=dict(t=10, b=10, l=10, r=10), height=280,
-                            paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                            font=dict(family="Be Vietnam Pro", color="#563B2D"),
-                            xaxis_title=None, yaxis_title=None,
-                        )
-                        st.plotly_chart(fig2, use_container_width=True)
-                    else:
-                        st.bar_chart(df_age.set_index("Khoang tuoi"))
-                else:
-                    st.info("Chua co du lieu do tuoi nao duoc ghi nhan.")
+                st.caption("Chưa có hồ sơ nhận diện hôm nay.")
 
 
-page_tong_quan()
+live()

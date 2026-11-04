@@ -1,52 +1,55 @@
 """
-frontend/views/bang_led.py  —  SKELETON
-----------------------------------------
-Phu trach: HOAN      Chuc nang: F2.2 Phat canh bao tai cho (FR-05) · PB-04
-API dung: GET /stats/current, GET /config
-
-MVP mo phong den + bang LED song ngu Viet - Anh tren man hinh (khong lap
-phan cung that - Bang 27 BRD). Mo trang nay toan man hinh tren 1 may
-rieng/TV khi demo de dong vai "bang dien tu dau cau".
+frontend/views/bang_led.py  —  MODULE M3 · F2.2 Tin hieu tai cho (FR-05, AC-03.1)
+Phu trach: HOAN.
+Mo phong den + bang LED song ngu Viet - Anh tai 2 dau cau. Doi trang thai
+trong <= 2 giay khi muc canh bao doi (tu cap nhat moi 2 giay).
+Mo trang nay toan man hinh (F11) tren man hinh dat tai dau cau.
 """
 
 import streamlit as st
 
-from common import api_get, todo_box
+from common import page_header, safe_get
 
-todo_box("Hoan", [
-    "Chot nguong Vang/Do voi Khanh (BRULE-01/02: Vang tu 15 nguoi, Do tren 20 nguoi lien tuc 15 giay)",
-    "Tu lam moi moi 2 giay de khop FR-02 (cap nhat <= 2 giay)",
-    "Them dong 'thoi gian cho du kien' neu nhom quyet dinh lam FR-17 (ngoai MVP)",
-])
+page_header("🪧", "Bảng LED tại chỗ", "Mô phỏng đèn và bảng thông báo song ngữ tại hai đầu cầu · nhấn F11 để toàn màn hình")
 
-stats, err1 = api_get("/stats/current")
-cfg, err2 = api_get("/config")
-if err1 or err2:
-    st.error(err1 or err2)
-    st.stop()
+SIGNS = {
+    "CRITICAL": ("#9B1C14", "#FF5A4F", "CẦU ĐANG ĐẦY — VUI LÒNG CHỜ", "BRIDGE IS FULL — PLEASE WAIT"),
+    "WARNING": ("#9A6A05", "#FFC233", "CẦU SẮP ĐẦY — ĐI CHẬM, KHÔNG DỪNG LẠI", "NEARLY FULL — PLEASE KEEP MOVING"),
+    "OK": ("#1F5C3B", "#4CD07D", "MỜI QUÝ KHÁCH THAM QUAN", "WELCOME — PLEASE ENTER"),
+}
 
-count = stats["current_count"]
-threshold = cfg["alert_threshold"]
-yellow_at = min(threshold, max(1, round(threshold * 0.75)))   # BRULE-02: Vang tu 15 khi toi da 20
-# Muc Do do camera xac dinh (> nguong LIEN TUC 15 giay, giu Do cho toi khi
-# <= 15 nguoi lien tuc 15 giay) va gui len qua /occupancy -> doc current_status.
-level = stats.get("current_status", "OK")
 
-if level == "CRITICAL":
-    bg, vi, en = "#7A1F1A", "CẦU ĐANG ĐẦY — VUI LÒNG CHỜ", "BRIDGE IS FULL — PLEASE WAIT"
-elif level in ("WARNING", "ALERT") or count >= yellow_at:
-    bg, vi, en = "#B7791F", "CẦU SẮP ĐẦY — ĐI CHẬM, KHÔNG DỪNG LẠI", "NEARLY FULL — KEEP MOVING"
-else:
-    bg, vi, en = "#2F5D46", "MỜI QUÝ KHÁCH THAM QUAN", "WELCOME — PLEASE ENTER"
+@st.fragment(run_every=2)
+def sign():
+    cur = safe_get("/stats/current")
+    cfg = safe_get("/config")
+    if cur is None or cfg is None:
+        return
+    level = cur["current_status"]
+    key = "CRITICAL" if level == "CRITICAL" else "WARNING" if level in ("WARNING", "ALERT") else "OK"
+    bg, lamp, vi, en = SIGNS[key]
+    lamps = "".join(
+        f'<div style="width:54px;height:54px;border-radius:50%;margin:0 10px;background:{c if k == key else "#2b2b2b"};'
+        f'box-shadow:{"0 0 28px " + c if k == key else "none"};border:3px solid #111"></div>'
+        for k, c in (("OK", "#4CD07D"), ("WARNING", "#FFC233"), ("CRITICAL", "#FF5A4F")))
+    st.markdown(
+        f"""
+        <div style="background:#111;border-radius:22px;padding:22px;box-shadow:0 18px 40px rgba(0,0,0,.25)">
+          <div style="display:flex;justify-content:center;margin-bottom:18px">{lamps}</div>
+          <div style="background:{bg};border-radius:14px;padding:44px 20px;text-align:center;color:#FFF8E8;
+                      border:4px solid {lamp}">
+            <div style="font-size:clamp(2.6rem,7vw,5.5rem);font-weight:800;line-height:1;font-variant-numeric:tabular-nums">
+              {cur['current_count']}<span style="font-size:.4em;opacity:.85"> / {cfg['alert_threshold']}</span></div>
+            <div style="font-size:.95rem;letter-spacing:.2em;opacity:.8;margin-top:6px">NGƯỜI TRÊN CẦU · PEOPLE ON BRIDGE</div>
+            <div style="font-size:clamp(1.4rem,3.6vw,2.6rem);font-weight:800;margin-top:22px">{vi}</div>
+            <div style="font-size:clamp(1.1rem,2.6vw,1.8rem);opacity:.92;margin-top:8px">{en}</div>
+          </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    if cur["status_stale"]:
+        st.caption("Chưa nhận được mức cảnh báo từ camera 1 trong 30 giây qua — bảng đang hiện trạng thái Bình thường.")
 
-st.markdown(
-    f"""
-    <div style="background:{bg};color:#FFF8E8;border-radius:18px;padding:48px 24px;text-align:center;
-                font-family:'Be Vietnam Pro',sans-serif;box-shadow:0 12px 30px rgba(0,0,0,.25);">
-        <div style="font-size:5rem;font-weight:800;line-height:1;">{count}<span style="font-size:2rem;"> / {threshold}</span></div>
-        <div style="font-size:2rem;font-weight:700;margin-top:18px;">{vi}</div>
-        <div style="font-size:1.4rem;opacity:.9;margin-top:6px;">{en}</div>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+
+sign()

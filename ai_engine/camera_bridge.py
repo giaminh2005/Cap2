@@ -1,7 +1,7 @@
 """
 camera_bridge.py  —  Camera tai 1 CHAN CAU (dung chung cho camera 1 va camera 2)
 ================================================================================
-Phu trach: MINH.   Chuc nang: F1.1, F1.2, F1.3, F2.1-F2.3 (FR-01..FR-06)
+Phu trach: MINH.   Chuc nang: F1.1-F1.4, F2.1-F2.3, F3.1, F3.2 (FR-01..FR-09, FR-16)
 
 Moi chan cau dat 1 camera, quay tu cau RA chan cau, vuong goc voi cau. Tren
 hinh ke 1 vach ngang qua loi di. Khi khach qua vach:
@@ -9,31 +9,32 @@ hinh ke 1 vach ngang qua loi di. Khi khach qua vach:
     tu phia cau ra phia ngoai  -> "out" -> server: num_k -= 1
 Server tinh onbridge = num1 + num2 (xem backend/routers/bridge.py).
 
+Them:
+  - Nguoi chi di ngang phia ngoai, khong qua vach -> 1 luot mat tien (F1.4)
+  - Doan >= 10 nguoi cung di toi cau trong 10 giay -> canh bao doan khach (F3.1)
+  - --demographics: hien Nam/Nu, khoang tuoi, Trong nuoc/Nuoc ngoai canh
+    khung nguoi va luu cho khach VAO cau (F3.2, xem visitor_profiler.py)
+  - Camera 1 xac dinh muc Vang/Do va bao server; server gui Telegram (F2)
+  - Mat tin hieu camera -> bao server ngay, tu ket noi lai (NFR-03)
+
 CHAY (tu THU MUC GOC Cap2/, backend phai chay truoc):
-    python ai_engine/camera_bridge.py --camera-id 1 --source 0
+    python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics
     python ai_engine/camera_bridge.py --camera-id 2 --source 1
     python ai_engine/camera_bridge.py --camera-id 2 --source video_chan_cau_2.mp4
     python ai_engine/camera_bridge.py --camera-id 1 --source rtsp://user:pass@ip/stream
 
-KE VACH (FR-01): lan dau chay se dung vach ngang giua hinh, phia cau = nua
-duoi. Nhan phim 'l' de ve lai bang chuot:
-    click 1, click 2 : 2 dau cua vach
-    click 3          : 1 diem bat ky o PHIA CAU
-Vach duoc luu vao ai_engine/config/line_cam<id>.json, lan sau tu doc lai.
+KE VACH (FR-01): mac dinh vach ngang giua hinh, phia cau = nua duoi. Nhan
+'l' de ve lai bang chuot: click 2 dau vach, roi click 1 diem o PHIA CAU.
+Vach luu o ai_engine/config/line_cam<id>.json.
 
 Tuy chon:
-    --no-alerts      tat gui canh bao (mac dinh CHI camera 1 gui canh bao
-                     Vang/Do + Telegram de khong bi gui trung 2 lan)
-    --demographics   uoc luong gioi tinh + khoang tuoi cho khach VAO cau
-                     (can DeepFace, cham hon) - xem visitor_profiler.py.
-                     Tu dung model pose yolov8n-pose.pt de lay vi tri mat.
-    --region         (kem --demographics) uoc luong NHOM KHU VUC rong, chi
-                     luu so dem tong hop theo gio. KHONG phai quoc tich.
-    --no-blur        tat lam mo khuon mat tren man hinh (mac dinh BAT, NFR-05)
-    --model          model YOLO (mac dinh yolov8n.pt, hoac yolov8n-pose.pt
-                     khi bat --demographics)
+    --demographics   uoc luong gioi tinh + tuoi + trong/ngoai nuoc (can DeepFace)
+    --no-origin      (kem --demographics) bo uoc luong trong/ngoai nuoc cho nhanh hon
+    --no-alerts      camera 1 khong gui muc canh bao (mac dinh chi camera 1 gui)
+    --group-size     so nguoi toi thieu cua 1 doan (mac dinh 10, BRULE-03)
+    --model          model YOLO (mac dinh yolov8n.pt, hoac yolov8n-pose.pt khi --demographics)
 
-Phim: 'q' thoat · 'l' ke lai vach · 'r' xoa vach da luu, ve vach mac dinh.
+Phim: 'q' thoat · 'l' ke lai vach · 'r' ve vach mac dinh.
 """
 
 import argparse
@@ -46,31 +47,39 @@ import cv2
 try:
     import requests
 except ImportError:
-    print("Chua cai requests. Chay: pip install requests")
+    print("Chưa cài requests. Chạy: pip install requests")
     sys.exit(1)
 
 try:
     from ultralytics import YOLO
 except ImportError:
-    print("Chua cai ultralytics. Chay: pip install ultralytics")
+    print("Chưa cài ultralytics. Chạy: pip install ultralytics")
     sys.exit(1)
 
 from camera_backend import open_camera
-from camera_ui import draw_capacity_banner, draw_info_panel, draw_person_box, draw_status_bar
-from crowd_counter import AlertLevelTracker, CameraThresholds, STATUS_COLOR_BGR, STATUS_LABEL_VI
-from line_crossing import LineCrossingCounter, foot_point
-from telegram_alert import send_telegram_alert, trigger_buzzer_signal
-from visitor_profiler import VisitorProfiler, blur_faces, extract_keypoints, face_rect
+from camera_ui import TextLayer, draw_person_box, panel_lines, vietnamese_text_supported
+from crowd_counter import AlertLevelTracker, CameraThresholds
+from group_detector import GroupDetector
+from line_crossing import FacadeCounter, LineCrossingCounter, foot_point
+from telegram_alert import trigger_buzzer_signal
+from visitor_profiler import VisitorProfiler, extract_keypoints
 
 API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")
 API_KEY = os.environ.get("SMARTCAU_API_KEY", "")
 _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
 
-STATE_POLL_SEC = 1.0      # doc onbridge (gom ca camera kia) moi 1 giay
-CONFIG_POLL_SEC = 15.0    # doc nguong canh bao Admin dat
-REPORT_SEC = 2.0          # gui so nguoi + muc canh bao cho dashboard (NFR-01)
+STATE_POLL_SEC = 1.0      # doc onbridge (gom ca camera kia)
+CONFIG_POLL_SEC = 15.0    # doc nguong Admin dat
+REPORT_SEC = 2.0          # gui so nguoi + muc canh bao (NFR-01)
+HEARTBEAT_SEC = 5.0       # nhip tim -> trang "Camera" biet camera con song (NFR-03)
 ALERT_REPEAT_SEC = 180.0  # BRULE-04
+RECONNECT_SEC = 3.0
+
+LEVEL_VI = {"OK": "Bình thường", "WARNING": "Cảnh báo Vàng", "ALERT": "Vàng · đang xác nhận 15 giây",
+            "CRITICAL": "CẢNH BÁO ĐỎ · QUÁ TẢI"}
+LEVEL_BGR = {"OK": (80, 160, 60), "WARNING": (0, 170, 240), "ALERT": (0, 120, 255), "CRITICAL": (40, 40, 210)}
+GREEN, ORANGE, YELLOW = (90, 200, 90), (0, 150, 255), (0, 230, 255)
 
 
 # ------------------------------------------------------------------ API
@@ -79,9 +88,9 @@ def _post(path, payload):
         r = requests.post(f"{API_BASE}{path}", json=payload, headers=_HEADERS, timeout=2)
         if r.status_code == 200:
             return r.json()
-        print(f"[API] {path} tra ve {r.status_code}: {r.text[:120]}")
+        print(f"[API] {path} trả về {r.status_code}: {r.text[:120]}")
     except requests.RequestException as e:
-        print(f"[API] Khong gui duoc {path}: {e}")
+        print(f"[API] Không gửi được {path}: {e}")
     return None
 
 
@@ -105,17 +114,15 @@ def load_line(camera_id) -> LineCrossingCounter:
     if os.path.exists(path):
         try:
             line = LineCrossingCounter.load(path)
-            print(f"[CAMERA {camera_id}] Da doc vach ke tu {path}")
+            print(f"[CAMERA {camera_id}] Đã đọc vạch kẻ từ {path}")
             return line
         except Exception as e:
-            print(f"[CAMERA {camera_id}] File vach ke loi ({e}) -> dung vach mac dinh.")
-    print(f"[CAMERA {camera_id}] Dung vach mac dinh (ngang giua hinh, phia cau = nua duoi). "
-          "Nhan 'l' de ke lai.")
+            print(f"[CAMERA {camera_id}] File vạch kẻ lỗi ({e}) -> dùng vạch mặc định.")
+    print(f"[CAMERA {camera_id}] Dùng vạch mặc định (ngang giữa hình, phía cầu = nửa dưới). Nhấn 'l' để kẻ lại.")
     return LineCrossingCounter()
 
 
-def draw_line_setup(cap, window, camera_id) -> LineCrossingCounter:
-    """Cho nguoi dung click 3 diem tren hinh dang chay. Tra ve vach moi (da luu)."""
+def draw_line_setup(cap, window, camera_id):
     clicks = []
 
     def on_mouse(event, x, y, flags, param):
@@ -123,8 +130,8 @@ def draw_line_setup(cap, window, camera_id) -> LineCrossingCounter:
             clicks.append((x, y))
 
     cv2.setMouseCallback(window, on_mouse)
-    hints = ["Click DAU 1 cua vach", "Click DAU 2 cua vach", "Click 1 diem o PHIA CAU"]
-    frame = None
+    hints = ["Click ĐẦU THỨ NHẤT của vạch", "Click ĐẦU THỨ HAI của vạch", "Click 1 điểm ở PHÍA CẦU"]
+    frame, layer = None, TextLayer()
     while len(clicks) < 3:
         ok, f = cap.read()
         if ok:
@@ -133,112 +140,177 @@ def draw_line_setup(cap, window, camera_id) -> LineCrossingCounter:
             continue
         out = frame.copy()
         for p in clicks:
-            cv2.circle(out, p, 6, (0, 255, 255), -1)
+            cv2.circle(out, p, 7, YELLOW, -1)
         if len(clicks) >= 2:
-            cv2.line(out, clicks[0], clicks[1], (0, 255, 255), 2)
-        draw_status_bar(out, f"KE VACH CAMERA {camera_id}: {hints[len(clicks)]}  (Esc = huy)")
+            cv2.line(out, clicks[0], clicks[1], YELLOW, 3)
+        layer.text(f"KẺ VẠCH CAMERA {camera_id}: {hints[len(clicks)]}   (Esc = hủy)", (12, 12),
+                   size=20, bold=True, bg=(30, 30, 30))
+        layer.render(out)
         cv2.imshow(window, out)
         if cv2.waitKey(30) & 0xFF == 27:
             cv2.setMouseCallback(window, lambda *a: None)
             return None
-
     cv2.setMouseCallback(window, lambda *a: None)
     h, w = frame.shape[:2]
     p1, p2, b = [(x / w, y / h) for x, y in clicks]
     try:
         line = LineCrossingCounter(p1=p1, p2=p2, bridge_point=b)
     except ValueError as e:
-        print(f"[CAMERA {camera_id}] Vach khong hop le: {e}")
+        print(f"[CAMERA {camera_id}] Vạch không hợp lệ: {e}")
         return None
     line.save(_line_path(camera_id))
-    print(f"[CAMERA {camera_id}] Da luu vach ke vao {_line_path(camera_id)}")
+    print(f"[CAMERA {camera_id}] Đã lưu vạch kẻ vào {_line_path(camera_id)}")
     return line
 
 
-def draw_line_overlay(frame, line: LineCrossingCounter):
+def draw_line_overlay(frame, layer, line: LineCrossingCounter):
     h, w = frame.shape[:2]
     p1 = (int(line.p1[0] * w), int(line.p1[1] * h))
     p2 = (int(line.p2[0] * w), int(line.p2[1] * h))
-    cv2.line(frame, p1, p2, (0, 255, 255), 2)
-    # mui ten chi huong VAO cau (vuong goc voi vach, ve phia cau)
+    cv2.line(frame, p1, p2, YELLOW, 3, cv2.LINE_AA)
     mx, my = (p1[0] + p2[0]) / 2, (p1[1] + p2[1]) / 2
     dx, dy = p2[0] - p1[0], p2[1] - p1[1]
     length = max(1.0, (dx * dx + dy * dy) ** 0.5)
     nx, ny = -dy / length, dx / length
-    probe = ((mx + nx * 10) / w, (my + ny * 10) / h)
-    if line.signed_distance(probe) < 0:
+    if line.signed_distance(((mx + nx * 10) / w, (my + ny * 10) / h)) < 0:
         nx, ny = -nx, -ny
-    tip = (int(mx + nx * 50), int(my + ny * 50))
-    cv2.arrowedLine(frame, (int(mx), int(my)), tip, (0, 255, 255), 2, tipLength=0.3)
-    cv2.putText(frame, "VAO CAU", (tip[0] + 6, tip[1]), cv2.FONT_HERSHEY_SIMPLEX,
-                0.55, (0, 255, 255), 2, cv2.LINE_AA)
+    tip = (int(mx + nx * 55), int(my + ny * 55))
+    cv2.arrowedLine(frame, (int(mx), int(my)), tip, YELLOW, 3, tipLength=0.3)
+    layer.text("VÀO CẦU", (tip[0] + 8, tip[1] - 10), size=18, bold=True, color=(20, 20, 20), bg=YELLOW, pad=4)
+
+
+def draw_hud(frame, layer, cam, state, level, thresholds, local_in, local_out, facade, fps, api_ok, group_size):
+    fh, fw = frame.shape[:2]
+    onbridge = int(state.get("onbridge", 0))
+    big = 19 if fw >= 900 else 16
+    small = 16 if fw >= 900 else 13
+    cv2.rectangle(frame, (0, 0), (fw, big + 26), (25, 25, 25), -1)
+    cv2.rectangle(frame, (0, 0), (7, big + 26), LEVEL_BGR[level], -1)
+    x = 16
+    for text, kw in ((f"CAMERA {cam}", {"bold": True}),
+                     (f"Trên cầu: {onbridge}/{thresholds.alert}", {"bold": True}),
+                     (LEVEL_VI[level], {"bold": True, "bg": LEVEL_BGR[level], "pad": 4})):
+        layer.text(text, (x, 12), size=big, **kw)
+        x += layer.measure(text, big, True)[0] + 22
+    if not api_ok:
+        t = "MẤT KẾT NỐI SERVER"
+        layer.text(t, (fw - layer.measure(t, small, True)[0] - 14, 12), size=small, bold=True, bg=(40, 40, 200), pad=4)
+    stats = (f"Hôm nay {state.get('dem', 0)} lượt vào cầu · Camera này: vào {local_in} / ra {local_out} · "
+             f"Mặt tiền {facade} · {fps:.0f} khung/giây")
+    while layer.measure(stats, small)[0] > fw - 24 and small > 10:
+        small -= 1
+    layer.text(stats, (12, fh - small - 16), size=small, bg=(25, 25, 25), pad=6)
+    if group_size >= 5:
+        layer.text(f"Nhóm {group_size} người đang đi tới", (12, big + 36), size=small + 1, bold=True, bg=ORANGE, pad=5)
+    if level == "CRITICAL":
+        bh = 64
+        y0 = fh // 2 - bh // 2
+        overlay = frame.copy()
+        cv2.rectangle(overlay, (0, y0), (fw, y0 + bh), (30, 30, 200), -1)
+        cv2.addWeighted(overlay, 0.6, frame, 0.4, 0, dst=frame)
+        msg = f"QUÁ TẢI · {onbridge}/{thresholds.alert} người trên cầu · TẠM DỪNG CHO KHÁCH LÊN"
+        size = 22
+        while layer.measure(msg, size, True)[0] > fw - 24 and size > 12:
+            size -= 1
+        layer.text(msg, (fw // 2, y0 + 20), size=size, bold=True, anchor="mt")
 
 
 # ------------------------------------------------------------------ main
 def parse_args(argv=None):
-    ap = argparse.ArgumentParser(description="Camera chan cau - SmartCau AI")
+    ap = argparse.ArgumentParser(description="Camera chân cầu - SmartCau AI")
     ap.add_argument("--camera-id", type=int, choices=(1, 2), required=True)
-    ap.add_argument("--source", default="0", help="So webcam (0, 1...) hoac duong dan video/RTSP")
-    ap.add_argument("--no-alerts", action="store_true", help="Khong gui canh bao tu camera nay")
-    ap.add_argument("--demographics", action="store_true", help="Uoc luong gioi tinh/tuoi khach VAO")
-    ap.add_argument("--region", action="store_true", help="Kem --demographics: thong ke nhom khu vuc tong hop")
-    ap.add_argument("--no-blur", action="store_true", help="Khong lam mo khuon mat tren man hinh")
+    ap.add_argument("--source", default="0", help="Số webcam (0, 1...) hoặc đường dẫn video/RTSP")
+    ap.add_argument("--demographics", action="store_true", help="Ước lượng giới tính, tuổi, trong/ngoài nước")
+    ap.add_argument("--no-origin", action="store_true", help="Bỏ ước lượng trong/ngoài nước")
+    ap.add_argument("--no-alerts", action="store_true", help="Camera này không gửi mức cảnh báo")
+    ap.add_argument("--group-size", type=int, default=10)
     ap.add_argument("--model", default=None)
     args = ap.parse_args(argv)
-    if args.region and not args.demographics:
-        ap.error("--region can di kem --demographics")
+    if args.no_origin and not args.demographics:
+        ap.error("--no-origin chỉ dùng kèm --demographics")
     if args.model is None:
         args.model = "yolov8n-pose.pt" if args.demographics else "yolov8n.pt"
-    args.source = int(args.source) if args.source.isdigit() else args.source
+    args.source = int(args.source) if str(args.source).isdigit() else args.source
     args.send_alerts = (args.camera_id == 1) and not args.no_alerts
+    args.is_file = isinstance(args.source, str) and os.path.isfile(args.source)
     return args
 
 
 def main():
     args = parse_args()
     cam = args.camera_id
-    window = f"SmartCau AI - CAMERA CHAN CAU {cam} ('q' thoat, 'l' ke vach)"
+    window = f"SmartCau AI - Camera chan cau {cam}"
+    if not vietnamese_text_supported():
+        print("[CẢNH BÁO] Không tìm thấy font tiếng Việt - chữ trên camera sẽ không có dấu. "
+              "Đặt biến SMARTCAU_FONT=<đường dẫn .ttf> hoặc cài Pillow.")
 
     thresholds = CameraThresholds()
     remote = (_get("/config") or {}).get("alert_threshold")
     if remote:
         thresholds = CameraThresholds.from_alert_threshold(remote)
     tracker = AlertLevelTracker(thresholds, repeat_sec=ALERT_REPEAT_SEC)
+    groups = GroupDetector(min_size=args.group_size)
+    facade = FacadeCounter()
 
     profiler = None
     if args.demographics:
-        profiler = VisitorProfiler(post=_post, enable_region=args.region)
-        print(f"[CAMERA {cam}] Uoc luong gioi tinh/tuoi: BAT"
-              f"{' + nhom khu vuc (tong hop)' if args.region else ''}.")
+        profiler = VisitorProfiler(post=_post, with_origin=not args.no_origin, camera_id=cam)
+        print(f"[CAMERA {cam}] Nhận diện giới tính, tuổi{'' if args.no_origin else ', trong/ngoài nước'}: BẬT.")
 
     model = YOLO(args.model)
     line = load_line(cam)
-
     cap = open_camera(args.source)
     if not cap.isOpened():
-        print(f"Khong mo duoc camera/video: {args.source}")
+        print(f"Không mở được camera/video: {args.source}")
         sys.exit(1)
-    cv2.namedWindow(window)
+    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
 
     state = _get("/bridge/state") or {"num1": 0, "num2": 0, "onbridge": 0, "dem": 0}
     api_ok = bool(_get("/health"))
-    last_state_poll = last_cfg_poll = last_report = 0.0
-    local_in = local_out = 0
+    last_state = last_cfg = last_report = last_hb = 0.0
+    local_in = local_out = facade_total = 0
+    prev_level = "OK"
+    fps, frames, fps_t0 = 0.0, 0, time.time()
+    layer = TextLayer()
+    source_label = str(args.source) if not isinstance(args.source, str) or "@" not in args.source \
+        else args.source.split("@")[-1]
 
-    print(f"CAMERA CHAN CAU {cam} dang chay. Canh bao: {'BAT' if args.send_alerts else 'TAT'}.")
+    print(f"CAMERA CHÂN CẦU {cam} đang chạy. Gửi mức cảnh báo: {'CÓ' if args.send_alerts else 'KHÔNG'}.")
     while True:
         ok, frame = cap.read()
         if not ok:
-            print("Khong doc duoc frame (het video hoac mat tin hieu camera).")
-            break
+            if args.is_file:
+                print("Hết video.")
+                break
+            # NFR-03: mat tin hieu -> bao ngay, tu ket noi lai
+            print(f"[CAMERA {cam}] Mất tín hiệu camera, đang kết nối lại...")
+            _post("/system_events", {"event_type": "CAMERA_LOST", "camera_id": cam,
+                                     "message": f"[SmartCau AI] Camera chân cầu {cam} mất tín hiệu lúc "
+                                                f"{time.strftime('%H:%M:%S %d/%m/%Y')}. Chuyển sang điều tiết thủ công."})
+            while True:
+                cap.release()
+                time.sleep(RECONNECT_SEC)
+                cap = open_camera(args.source, warmup_sec=1.0)
+                if cap.isOpened() and cap.read()[0]:
+                    break
+                if cv2.waitKey(1) & 0xFF == ord("q"):
+                    return
+            _post("/system_events", {"event_type": "CAMERA_RESTORED", "camera_id": cam,
+                                     "message": f"[SmartCau AI] Camera chân cầu {cam} đã hoạt động lại."})
+            print(f"[CAMERA {cam}] Đã kết nối lại.")
+            continue
+
         now = time.time()
+        frames += 1
+        if now - fps_t0 >= 2.0:
+            fps, frames, fps_t0 = frames / (now - fps_t0), 0, now
         fh, fw = frame.shape[:2]
 
         results = model.track(frame, persist=True, classes=[0], conf=0.4, verbose=False)[0]
         out = frame.copy()
-        draw_line_overlay(out, line)
+        draw_line_overlay(out, layer, line)
 
-        people = []   # (tid, box, keypoints, kp_conf)
+        people = []
         if results.boxes is not None and results.boxes.id is not None:
             for i, (box, tid) in enumerate(zip(results.boxes, results.boxes.id)):
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
@@ -246,19 +318,19 @@ def main():
                 kp_xy, kp_conf = extract_keypoints(results, i)
                 people.append((int(tid), b, kp_xy, kp_conf))
 
-        # NFR-05: lam mo mat tren anh HIEN THI truoc khi ve chu/khung len
-        if not args.no_blur:
-            blur_faces(out, [face_rect(b, kp, kc) for _, b, kp, kc in people])
-
+        group_input = []
         for tid, b, kp_xy, kp_conf in people:
             fx, fy = foot_point(b, fw, fh)
-            on_bridge_side = line.signed_distance((fx, fy)) > 0
-            side_color = (0, 200, 0) if on_bridge_side else (200, 120, 0)
-            draw_person_box(out, b, tid, side_color)
-            cv2.circle(out, (int(fx * fw), int(fy * fh)), 4, side_color, -1)
+            d = line.signed_distance((fx, fy))
+            color = GREEN if d > 0 else ORANGE
+            draw_person_box(out, b, tid, color)
+            cv2.circle(out, (int(fx * fw), int(fy * fh)), 5, color, -1)
+            facade.update(tid, outside=d < 0, now=now)
+            group_input.append((tid, fx, fy, b[3] / fh, d))
 
             event = line.update(tid, (fx, fy), now)
             if event:
+                facade.mark_crossed(tid)
                 if event == "in":
                     local_in += 1
                     if profiler is not None:
@@ -271,68 +343,76 @@ def main():
                 api_ok = res is not None
                 if res:
                     state = res
-                print(f"[CAMERA {cam}] ID {tid} {'VAO' if event == 'in' else 'RA'} cau"
-                      f" -> tren cau: {state.get('onbridge')}")
+                print(f"[CAMERA {cam}] ID {tid} {'VÀO' if event == 'in' else 'RA'} cầu -> trên cầu: {state.get('onbridge')}")
 
             if profiler is not None:
-                # Phan tich khach dang di TOI cau (phia ngoai, mat huong ve camera)
-                # va khach vua vao chua chot ho so; bo qua nguoi da o tren cau tu truoc.
-                if profiler.wants(tid) and (not on_bridge_side or event == "in"
-                                            or profiler.label(tid) is not None):
+                if profiler.wants(tid):
                     profiler.observe(tid, frame, b, now, kp_xy, kp_conf)
                 lines = profiler.label(tid)
                 if lines:
-                    draw_info_panel(out, b, lines)
+                    accent = (60, 120, 20) if lines[0].startswith("VÀO") else (150, 90, 20)
+                    panel_lines(layer, out, b, lines, accent=accent)
 
         if profiler is not None:
             profiler.step(now)
 
-        if now - last_state_poll >= STATE_POLL_SEC:
+        n_facade = facade.collect(now)
+        if n_facade:
+            facade_total += n_facade
+            _post("/facade_pass", {"camera_id": cam, "count": n_facade})
+
+        group = groups.update(group_input, now)
+        if group:
+            _post("/system_events", {"event_type": "GROUP_DETECTED", "count": group, "camera_id": cam,
+                                     "message": f"[SmartCau AI] Đoàn khoảng {group} người đang đến chân cầu {cam} "
+                                                f"lúc {time.strftime('%H:%M:%S')}. Chuẩn bị điều tiết và kiểm tra vé đoàn."})
+            print(f"[CAMERA {cam}] Phát hiện đoàn khoảng {group} người.")
+
+        if now - last_state >= STATE_POLL_SEC:
             s = _get("/bridge/state")
             api_ok = s is not None
             if s:
                 state = s
-            last_state_poll = now
-
-        if now - last_cfg_poll >= CONFIG_POLL_SEC:
+            last_state = now
+        if now - last_cfg >= CONFIG_POLL_SEC:
             remote = (_get("/config") or {}).get("alert_threshold")
             if remote and remote != thresholds.alert:
                 thresholds = CameraThresholds.from_alert_threshold(remote)
                 tracker.set_thresholds(thresholds)
-                print(f"[CAMERA {cam}] Nguong moi: Vang tu {thresholds.warning}, toi da {thresholds.alert}.")
-            last_cfg_poll = now
+                print(f"[CAMERA {cam}] Ngưỡng mới: Vàng từ {thresholds.warning}, tối đa {thresholds.alert}.")
+            last_cfg = now
+        if now - last_hb >= HEARTBEAT_SEC:
+            _post("/bridge/heartbeat", {"camera_id": cam, "source": source_label, "fps": fps,
+                                        "line": f"{line.p1} → {line.p2}", "sends_alerts": args.send_alerts,
+                                        "demographics": profiler is not None})
+            last_hb = now
 
         onbridge = int(state.get("onbridge", 0))
         level = tracker.update(onbridge, now)
-
         if args.send_alerts:
             if now - last_report >= REPORT_SEC:
                 _post("/occupancy", {"count": onbridge, "status": level})
                 last_report = now
             kind = tracker.pop_notification(now)
-            if kind:
-                stamp = time.strftime("%H:%M:%S %d/%m/%Y")
-                if kind == "CRITICAL":
-                    msg = (f"[SmartCau AI] CANH BAO DO - QUA TAI: {onbridge} nguoi dang tren cau "
-                           f"(toi da {thresholds.alert}), vuot nguong lien tuc "
-                           f"{int(thresholds.red_hold_sec)} giay. Thoi diem: {stamp}.")
-                    trigger_buzzer_signal(msg)
-                    _post("/system_events", {"event_type": "CRITICAL_ALERT", "count": onbridge, "message": msg})
-                else:
-                    msg = (f"[SmartCau AI] CANH BAO VANG - CAU SAP DAY: {onbridge} nguoi dang tren cau "
-                           f"(toi da {thresholds.alert}). Thoi diem: {stamp}.")
-                    _post("/system_events", {"event_type": "WARNING", "count": onbridge, "message": msg})
-                send_telegram_alert(msg)
+            stamp = time.strftime("%H:%M:%S %d/%m/%Y")
+            if kind == "CRITICAL":
+                msg = (f"[SmartCau AI] CẢNH BÁO ĐỎ - QUÁ TẢI: {onbridge} người đang trên cầu "
+                       f"(tối đa {thresholds.alert}), vượt ngưỡng liên tục {int(thresholds.red_hold_sec)} giây. "
+                       f"Thời điểm: {stamp}. Tạm dừng cho khách lên cầu.")
+                trigger_buzzer_signal(msg)
+                _post("/system_events", {"event_type": "CRITICAL_ALERT", "count": onbridge, "message": msg, "camera_id": cam})
+            elif kind == "WARNING":
+                msg = (f"[SmartCau AI] CẢNH BÁO VÀNG - CẦU SẮP ĐẦY: {onbridge} người đang trên cầu "
+                       f"(tối đa {thresholds.alert}). Thời điểm: {stamp}.")
+                _post("/system_events", {"event_type": "WARNING", "count": onbridge, "message": msg, "camera_id": cam})
+            if prev_level == "CRITICAL" and level != "CRITICAL":
+                _post("/system_events", {"event_type": "CRITICAL_CLEARED", "count": onbridge, "camera_id": cam,
+                                         "message": f"[SmartCau AI] Hết quá tải: còn {onbridge} người trên cầu."})
+        prev_level = level
 
-        api_note = "" if api_ok else " | MAT KET NOI SERVER"
-        draw_status_bar(out, f"CAM {cam} | num{cam}={state.get(f'num{cam}', 0)} | Tren cau: "
-                             f"{onbridge}/{thresholds.alert} | Hom nay: {state.get('dem', 0)} luot | "
-                             f"{STATUS_LABEL_VI[level]}{api_note}")
-        cv2.putText(out, f"Camera nay: vao {local_in} / ra {local_out}", (10, fh - 12),
-                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, STATUS_COLOR_BGR[level], 2, cv2.LINE_AA)
-        if level == "CRITICAL":
-            draw_capacity_banner(out, f"QUA TAI! {onbridge} nguoi tren cau (toi da {thresholds.alert})")
-
+        draw_hud(out, layer, cam, state, level, thresholds, local_in, local_out, facade_total, fps, api_ok,
+                 groups.current_size)
+        layer.render(out)
         cv2.imshow(window, out)
         key = cv2.waitKey(1) & 0xFF
         if key == ord("q"):
@@ -347,14 +427,13 @@ def main():
             except FileNotFoundError:
                 pass
             line = LineCrossingCounter()
-            print(f"[CAMERA {cam}] Da ve lai vach mac dinh.")
+            print(f"[CAMERA {cam}] Đã về vạch mặc định.")
 
     cap.release()
     cv2.destroyAllWindows()
-    print(f"Ket thuc camera {cam}: ghi nhan {local_in} luot vao, {local_out} luot ra.")
+    print(f"Kết thúc camera {cam}: {local_in} lượt vào, {local_out} lượt ra, {facade_total} lượt mặt tiền.")
     if profiler is not None:
-        print(f"Ho so nhan khau hoc: {profiler.saved_count} da xac dinh, "
-              f"{profiler.unknown_count} 'Khong xac dinh' (do tin cay < 70%).")
+        print(f"Hồ sơ khách: {profiler.saved_count} đã nhận diện, {profiler.unknown_count} 'Không xác định'.")
 
 
 if __name__ == "__main__":

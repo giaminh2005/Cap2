@@ -87,7 +87,7 @@ def current_stats(db: Session = Depends(get_db)):
 
     state = get_state(db)
     cfg = get_config(db)
-    latest = db.query(OccupancySnapshot).order_by(OccupancySnapshot.id.desc()).first()
+    latest = db.query(OccupancySnapshot).order_by(OccupancySnapshot.timestamp.desc()).first()
     status = "OK"
     stale = True
     if latest is not None:
@@ -123,7 +123,7 @@ def current_stats(db: Session = Depends(get_db)):
 def occupancy_history(minutes: int = 60, limit: int = 5000, db: Session = Depends(get_db)):
     since = datetime.utcnow() - timedelta(minutes=minutes)
     rows = (db.query(OccupancySnapshot).filter(OccupancySnapshot.timestamp >= since)
-            .order_by(OccupancySnapshot.id.desc()).limit(limit).all())
+            .order_by(OccupancySnapshot.timestamp.desc()).limit(limit).all())
     return [{"timestamp": iso(r.timestamp), "count": r.count, "status": r.status} for r in reversed(rows)]
 
 

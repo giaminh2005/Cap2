@@ -21,9 +21,8 @@ Mo http://127.0.0.1:8000/docs de xem/test toan bo API (nhom theo F1-F6).
 Moi endpoint giu NGUYEN duong dan nhu api_server.py cu -> camera_in.py,
 camera_out.py va trang admin KHONG can sua gi.
 
-LUU Y: database gio nam o backend/smartcau.db (khong con o src/). Lan dau
-chay se tao file moi, rong - chay "python tools/seed_demo_data.py" de nap
-du lieu mau khi chua bat camera.
+LUU Y: database o backend/smartcau.db (tu tao). Lan dau chay tu tao tai
+khoan admin / admin123. Cot moi trong cac bang cu duoc tu bo sung khi khoi dong.
 """
 
 from fastapi import FastAPI

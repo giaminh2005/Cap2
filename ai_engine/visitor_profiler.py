@@ -1,45 +1,36 @@
 """
-visitor_profiler.py  —  F3.2 Uoc luong gioi tinh, khoang tuoi, nhom khu vuc cho khach VAO cau
-=============================================================================================
-Phu trach: MINH.   Yeu cau: FR-09, NFR-05, BRULE-05, BRULE-06 (BRD Sprint 1).
+visitor_profiler.py  —  F3.2 Uoc luong gioi tinh, khoang tuoi, trong nuoc / nuoc ngoai cho khach VAO cau
+=========================================================================================================
+Phu trach: MINH.   Yeu cau: FR-09, BRULE-05, BRULE-06 (BRD Sprint 1).
 
 Tach tu phan nhan khau hoc trong camera_in.py (YOLO-pose keypoints +
-DemographicsEngine bo phieu theo thoi gian + luu ho so 1 lan + thong ke khu
-vuc tong hop) de dung cho he thong 2 camera chan cau (camera_bridge.py).
-Phan loi AI van nam o demographics_engine.py / age_gender_estimator.py /
-region_mapping.py (khong doi).
+DemographicsEngine bo phieu theo thoi gian + luu ho so 1 lan) de dung cho he
+thong 2 camera chan cau (camera_bridge.py). Loi AI van nam o
+demographics_engine.py / age_gender_estimator.py / region_mapping.py.
 
-Nang cap so voi camera_in.py:
-  1. Chi lap ho so cho khach THUC SU VAO cau (qua vach ke) -> so ho so khop
-     voi bien dem `dem`, khong lap ho so cho nguoi chi dung ngoai / di ngang.
-  2. Bat dau bo phieu TU LUC khach con o phia ngoai dang di toi (luc do mat
-     huong ve camera, nhin ro nhat) -> qua vach la thuong da du phieu.
-  3. Gioi han tan suat goi DeepFace moi nguoi (``analyze_interval``) de
-     camera khong bi giat khi dong nguoi.
-  4. BRULE-06: khach da vao ma sau ``give_up_sec`` giay van chua du tin cay
-     >= 70% -> van ghi 1 ho so "Khong xac dinh" (gender = None) de tong so
-     ho so = tong luot vao, nhung KHONG dua vao ty le gioi tinh / tuoi.
-  5. NFR-05: lam mo khuon mat tren man hinh hien thi (``blur_faces``). Anh
-     goc chi dung de phan tich trong bo nho, khong luu ra dia.
-  6. Nhom khu vuc (TUY CHON, mac dinh TAT): chi gui so dem TONG HOP theo
-     gio qua /region_stats, khong gan vao ho so ca nhan (region_mapping.py).
+Hien tren camera (giong camera_in.py): "Nam/Nu · khoang tuoi · Trong nuoc/Nuoc ngoai"
+ngay khi bo phieu du tin cay >= 70%, ke ca truoc khi khach qua vach.
 
-LUU Y VE "QUOC TICH": camera KHONG xac dinh duoc quoc tich. DeepFace chi
-uoc luong 4 nhom khu vuc rong (Dong A / Noi dia, Phuong Tay, Nam A, Khac)
-va gop chung khach Viet voi khach Han, Nhat, Trung... Muon so "trong nuoc /
-nuoc ngoai" chinh xac phai dung du lieu ve quoc te (FR-15) hoac QR check-in.
+Luu vao CSDL (POST /visit_events) CHI khi khach thuc su VAO cau, 1 lan / nguoi:
+  - du tin cay -> gioi tinh, khoang tuoi, nguon khach
+  - vao cau ma sau ``give_up_sec`` giay van chua du tin cay -> "Khong xac dinh"
+    (BRULE-06: van tinh 1 luot, khong dua vao ty le)
+
+TRONG NUOC / NUOC NGOAI la UOC LUONG tu nhom khu vuc rong cua DeepFace:
+    "Dong A / Noi dia" -> Trong nuoc;  Phuong Tay, Nam A, Khac -> Nuoc ngoai
+DeepFace KHONG phan biet duoc khach Viet voi khach Han / Nhat / Trung, nen
+khach Dong A deu bi tinh la "Trong nuoc". Con so chi dung de xem xu huong.
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
-import cv2
-
-GENDER_VI = {"Man": "Nam", "Woman": "Nu"}
+GENDER_VI = {"Man": "Nam", "Woman": "Nữ"}
+ORIGIN_VI = {"Trong nuoc": "Trong nước", "Nuoc ngoai": "Nước ngoài"}
 UNKNOWN_AGE = "Khong xac dinh"
-
-# Chi so khop COCO-pose cua vung mat: mui, 2 mat, 2 tai
-_FACE_KPS = (0, 1, 2, 3, 4)
+REGION_TO_ORIGIN = {"Dong A / Noi dia": "Trong nuoc", "Phuong Tay": "Nuoc ngoai",
+                    "Nam A": "Nuoc ngoai", "Khac": "Nuoc ngoai"}
+ORIGIN_MIN_SHARE = 0.55   # nhom khu vuc phai chiem >= 55% trong so phieu moi ket luan
 
 
 def extract_keypoints(results, idx):
@@ -56,35 +47,6 @@ def extract_keypoints(results, idx):
         return None, None
 
 
-def face_rect(box, keypoints=None, kp_conf=None, min_conf=0.3):
-    """Vung mat (x0, y0, x1, y1) de lam mo. Uu tien keypoint mui/mat/tai cua
-    YOLO-pose; khong co thi uoc luong = phan tren cung cua khung nguoi."""
-    x, y, w, h = box
-    if keypoints is not None and kp_conf is not None and len(keypoints) > 4:
-        pts = [keypoints[i] for i in _FACE_KPS
-               if kp_conf[i] >= min_conf and (keypoints[i][0] > 0 or keypoints[i][1] > 0)]
-        if len(pts) >= 2:
-            xs, ys = [p[0] for p in pts], [p[1] for p in pts]
-            size = max(max(xs) - min(xs), max(ys) - min(ys), w * 0.25)
-            cx, cy = (max(xs) + min(xs)) / 2, (max(ys) + min(ys)) / 2
-            half = size * 0.9
-            return int(cx - half), int(cy - half * 1.2), int(cx + half), int(cy + half)
-    head_h = min(h, max(w * 0.9, h * 0.22))
-    return int(x + w * 0.1), int(y), int(x + w * 0.9), int(y + head_h)
-
-
-def blur_faces(frame, rects):
-    """NFR-05: lam mo cac vung mat tren frame HIEN THI (sua tai cho)."""
-    fh, fw = frame.shape[:2]
-    for x0, y0, x1, y1 in rects:
-        x0, y0, x1, y1 = max(0, x0), max(0, y0), min(fw, x1), min(fh, y1)
-        if x1 - x0 < 4 or y1 - y0 < 4:
-            continue
-        roi = frame[y0:y1, x0:x1]
-        k = max(15, (min(x1 - x0, y1 - y0) // 3) | 1)
-        frame[y0:y1, x0:x1] = cv2.GaussianBlur(roi, (k, k), 0)
-
-
 @dataclass
 class _Track:
     first_seen: float
@@ -92,43 +54,36 @@ class _Track:
     last_analyzed: float = -1e9
     entered_at: Optional[float] = None
     info: Optional[dict] = None
+    region_votes: Dict[str, float] = field(default_factory=dict)
     done: bool = False
     saved: Optional[dict] = None
 
 
 class VisitorProfiler:
-    """Quan ly ho so nhan khau hoc theo track_id cho 1 camera chan cau.
+    """Quan ly nhan khau hoc theo track_id cho 1 camera chan cau.
 
-    Cach dung trong vong lap camera:
         profiler.observe(tid, frame, box, now, keypoints, kp_conf)   # moi frame
-        profiler.mark_entered(tid, now)                              # khi qua vach vao cau
+        profiler.mark_entered(tid, now)                              # qua vach VAO cau
+        profiler.mark_exited(tid)                                    # qua vach RA
         profiler.step(now)                                           # cuoi moi frame
         lines = profiler.label(tid)                                  # chu hien canh khung nguoi
-
-    ``post(path, payload)`` la ham gui API (camera_bridge truyen vao), de
-    module nay khong phu thuoc mang va de kiem thu.
     """
 
-    def __init__(self, post: Callable[[str, dict], object], engine=None, enable_region: bool = False,
-                 analyze_interval: float = 0.3, give_up_sec: float = 5.0,
+    def __init__(self, post: Callable[[str, dict], object], engine=None, with_origin: bool = True,
+                 camera_id: Optional[int] = None, analyze_interval: float = 0.3, give_up_sec: float = 5.0,
                  gone_sec: float = 1.5, forget_sec: float = 30.0):
         if engine is None:
             from demographics_engine import DemographicsEngine
-            engine = DemographicsEngine(enable_region=enable_region)
-        self.engine = engine
-        self.post = post
-        self.enable_region = enable_region
-        self.analyze_interval = analyze_interval
-        self.give_up_sec = give_up_sec
-        self.gone_sec = gone_sec
-        self.forget_sec = forget_sec
+            engine = DemographicsEngine(enable_region=with_origin)
+        self.engine, self.post, self.with_origin, self.camera_id = engine, post, with_origin, camera_id
+        self.analyze_interval, self.give_up_sec = analyze_interval, give_up_sec
+        self.gone_sec, self.forget_sec = gone_sec, forget_sec
         self._tracks: Dict[int, _Track] = {}
         self.saved_count = 0
         self.unknown_count = 0
 
-    # ------------------------------------------------------------ vong lap
+    # ----------------------------------------------------------- vong lap
     def wants(self, tid: int) -> bool:
-        """Con can phan tich nguoi nay khong (chua chot ho so)."""
         t = self._tracks.get(tid)
         return t is None or not t.done
 
@@ -141,6 +96,9 @@ class VisitorProfiler:
             return
         t.last_analyzed = now
         t.info = self.engine.update(tid, frame, box, keypoints=keypoints, kp_conf=kp_conf)
+        region, conf = t.info.get("region"), float(t.info.get("region_confidence") or 0)
+        if region:
+            t.region_votes[region] = t.region_votes.get(region, 0.0) + max(conf, 0.05)
         if t.entered_at is not None and t.info.get("ready"):
             self._save(tid, t)
 
@@ -149,7 +107,7 @@ class VisitorProfiler:
         if t is None:
             t = self._tracks[tid] = _Track(first_seen=now, last_seen=now)
         if t.done and t.saved is None:
-            t.done = False          # da ra roi nay quay lai vao -> lap ho so tiep
+            t.done = False                     # da ra roi quay lai vao -> lap ho so tiep
         if t.done:
             return
         t.entered_at = now
@@ -157,7 +115,7 @@ class VisitorProfiler:
             self._save(tid, t)
 
     def mark_exited(self, tid: int):
-        """Khach di RA (chua tung vao o camera nay) -> ngung phan tich, khong lap ho so."""
+        """Di RA (chua vao o camera nay) -> ngung phan tich, khong lap ho so."""
         t = self._tracks.get(tid)
         if t is not None and t.entered_at is None and not t.done:
             t.done = True
@@ -166,44 +124,56 @@ class VisitorProfiler:
     def step(self, now: float):
         for tid, t in list(self._tracks.items()):
             if t.entered_at is not None and not t.done:
-                timed_out = now - t.entered_at >= self.give_up_sec
-                gone = now - t.last_seen >= self.gone_sec
-                if timed_out or gone:
+                if now - t.entered_at >= self.give_up_sec or now - t.last_seen >= self.gone_sec:
                     self._save_unknown(tid, t)
             if now - t.last_seen > self.forget_sec:
                 self.engine.forget(tid)
                 del self._tracks[tid]
 
-    # ---------------------------------------------------------- hien thi
+    # ---------------------------------------------------------- ket qua
+    def origin_of(self, tid: int) -> Optional[str]:
+        t = self._tracks.get(tid)
+        if t is None or not self.with_origin or not t.region_votes:
+            return None
+        total = sum(t.region_votes.values())
+        best = max(t.region_votes, key=t.region_votes.get)
+        if t.region_votes[best] / total < ORIGIN_MIN_SHARE:
+            return None
+        return REGION_TO_ORIGIN.get(best)
+
     def label(self, tid: int) -> Optional[List[str]]:
+        """Dong chu hien tren camera (co dau tieng Viet)."""
         t = self._tracks.get(tid)
         if t is None:
             return None
-        if t.saved is not None:
-            if t.saved["gender"] is None:
-                return [f"VAO - ID {tid}", "Khong xac dinh"]
-            return [f"VAO - ID {tid}", GENDER_VI.get(t.saved["gender"], t.saved["gender"]),
-                    t.saved["age_range"]]
-        if t.info is not None:
-            return [f"ID {tid}", f"dang xac dinh {t.info.get('n_votes', 0)}/3"]
+        head = f"VÀO CẦU · ID {tid}" if t.entered_at is not None else f"ID {tid}"
+        res = t.saved if t.saved is not None else (t.info if t.info and t.info.get("ready") else None)
+        if t.saved is not None and t.saved["gender"] is None:
+            return [head, "Không xác định"]
+        if res is not None:
+            lines = [head, f"{GENDER_VI.get(res['gender'], res['gender'])} · {res.get('age_range') or '?'}"]
+            if self.with_origin:
+                origin = res.get("origin") if t.saved is not None else self.origin_of(tid)
+                lines.append(ORIGIN_VI.get(origin, "Chưa rõ trong/ngoài nước"))
+            return lines
+        if t.info is not None and not t.done:
+            return [head, f"Đang nhận diện {min(t.info.get('n_votes', 0), 3)}/3"]
         return None
 
-    # ------------------------------------------------------------ ghi
+    # -------------------------------------------------------------- ghi
     def _save(self, tid: int, t: _Track):
         info = t.info
         payload = {"track_id": tid, "age": info.get("age"),
-                   "age_range": info.get("age_range") or UNKNOWN_AGE, "gender": info.get("gender")}
+                   "age_range": info.get("age_range") or UNKNOWN_AGE, "gender": info.get("gender"),
+                   "origin": self.origin_of(tid), "camera_id": self.camera_id}
         self.post("/visit_events", payload)
-        if self.enable_region and info.get("region") and info.get("region_confidence", 0) >= 0.5:
-            # chi cong vao bo dem TONG HOP theo gio, khong gan vao ho so ca nhan
-            self.post("/region_stats", {"region": info["region"]})
         t.saved, t.done = payload, True
         self.saved_count += 1
         self.engine.forget(tid)
 
     def _save_unknown(self, tid: int, t: _Track):
-        """BRULE-06: chua du tin cay 70% -> 'Khong xac dinh', khong tinh vao ty le."""
-        payload = {"track_id": tid, "age": None, "age_range": UNKNOWN_AGE, "gender": None}
+        payload = {"track_id": tid, "age": None, "age_range": UNKNOWN_AGE, "gender": None,
+                   "origin": None, "camera_id": self.camera_id}
         self.post("/visit_events", payload)
         t.saved, t.done = payload, True
         self.unknown_count += 1
