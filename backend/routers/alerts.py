@@ -9,6 +9,7 @@ Phu trach: MINH (F2.1-F2.3), HOAN (F2.4).
     GET  /incidents?status=        su co Do (open | closed | all)
     POST /incidents/{id}/ack       nguoi truc xac nhan "da xu ly" (1 cham, AC-04.1)
     POST /incidents/{id}/close     dong su co bang tay (vd camera mat tin hieu)
+    POST /incidents/{id}/false_alarm   danh dau / bo danh dau "bao sai" (KPI O5)
 
 Vong doi su co (FR-07):
     CRITICAL_ALERT (lan dau)  -> MO su co moi, gui tin Do
@@ -22,12 +23,12 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.orm import Session
 
 from .. import notify
 from ..database import Base, get_db
-from ..models import SystemEvent, get_config
+from ..models import SystemEvent, get_config, log_audit
 from ..schemas import SystemEventIn
 from ..security import Principal, require_api_key, require_staff
 from ..timeutil import iso, to_local
@@ -62,6 +63,9 @@ class Incident(Base):
     closed_at = Column(DateTime, nullable=True)
     close_reason = Column(String, nullable=True)   # "auto" | "manual"
     closed_by = Column(String, nullable=True)
+    false_alarm = Column(Boolean, default=False)   # KPI O5 / NFR-02: nguoi truc danh dau bao sai
+    false_note = Column(String, nullable=True)
+    false_by = Column(String, nullable=True)
 
 
 def _open_incident(db) -> Optional[Incident]:
@@ -78,6 +82,7 @@ def _incident_json(i: Incident) -> dict:
             "acked_at": iso(i.acked_at), "acked_by": i.acked_by, "note": i.note,
             "closed_at": iso(i.closed_at), "close_reason": i.close_reason, "closed_by": i.closed_by,
             "status": "open" if i.closed_at is None else "closed",
+            "false_alarm": bool(i.false_alarm), "false_note": i.false_note, "false_by": i.false_by,
             "handle_seconds": _secs(i.opened_at, i.acked_at),
             "duration_seconds": _secs(i.opened_at, i.closed_at or datetime.utcnow())}
 
@@ -178,5 +183,27 @@ def close_incident(incident_id: int, p: Principal = Depends(require_staff), db: 
         text = _close(db, inc, "manual", p.display)
         db.commit()
         notify.deliver_async(active_recipients(db), text)
+    db.refresh(inc)
+    return _incident_json(inc)
+
+
+class FalseAlarmIn(BaseModel):
+    is_false: bool = True
+    note: str = ""
+
+
+@router.post("/incidents/{incident_id}/false_alarm")
+def mark_false_alarm(incident_id: int, payload: FalseAlarmIn = FalseAlarmIn(), p: Principal = Depends(require_staff),
+                     db: Session = Depends(get_db)):
+    """KPI O5: ty le canh bao sai = so su co bi danh dau bao sai / tong su co."""
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if inc is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sự cố.")
+    inc.false_alarm = payload.is_false
+    inc.false_note = payload.note if payload.is_false else None
+    inc.false_by = p.display if payload.is_false else None
+    log_audit(db, p.username, "Đánh dấu báo sai" if payload.is_false else "Bỏ đánh dấu báo sai",
+              f"Sự cố #{inc.id}" + (f": {payload.note}" if payload.note else ""))
+    db.commit()
     db.refresh(inc)
     return _incident_json(inc)

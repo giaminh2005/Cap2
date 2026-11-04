@@ -10,6 +10,7 @@ import sys
 from datetime import datetime, timedelta
 
 os.environ["SMARTCAU_DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["SMARTCAU_DISABLE_SCHEDULER"] = "1"
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
 import pytest  # noqa: E402
@@ -28,6 +29,10 @@ from backend.main import app  # noqa: E402
 client = TestClient(app)
 SENT = []
 notify.deliver_async = lambda recipients, text: SENT.append(text)   # khong gui Telegram that
+notify.deliver = lambda recipients, text: [{"name": "x", "channel": "telegram", "status": "ok"}] if SENT.append(text) is None else []
+DOCS = []
+notify.deliver_document = lambda recipients, fn, content, caption="": DOCS.append((fn, content)) or [
+    {"name": "x", "channel": "telegram", "status": "ok"}]
 
 
 def login(username="admin", password="admin123"):
@@ -240,3 +245,55 @@ def test_ticket_reconciliation():
     assert d["gap_rate_pct"] == pytest.approx(round(1 / entries * 100, 1))
     assert len(client.get("/tickets", params={"date_from": today, "date_to": today}).json()) == 1
     assert client.post("/tickets", headers=ADMIN, json={"date": "04/11/2026", "ticket_count": 1}).status_code == 400
+
+
+# ------------------------------------------------- KPI O1/O4/O5, bao sai, heatmap, bao cao ngay
+def test_false_alarm_and_kpis():
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 24})
+    iid = client.get("/incidents", params={"status": "open"}).json()[0]["id"]
+    assert client.post(f"/incidents/{iid}/false_alarm", json={"note": "bóng người"}).status_code == 401
+    d = client.post(f"/incidents/{iid}/false_alarm", headers=ADMIN, json={"note": "bóng người"}).json()
+    assert d["false_alarm"] and d["false_note"] == "bóng người"
+    client.post("/system_events", json={"event_type": "CRITICAL_CLEARED", "count": 10})
+    client.post("/occupancy", json={"count": 99, "status": "CRITICAL"})
+    k = client.get("/reports/summary", params={"period": "day"}).json()["kpis"]
+    assert k["o1_minutes_over"] >= 1
+    assert k["o5_false_alarms"] >= 1 and 0 < k["o5_false_alarm_pct"] <= 100
+    assert k["o4_real_incidents"] >= 1 and k["o4_handled_within_3min_pct"] is not None
+    # bo danh dau
+    assert client.post(f"/incidents/{iid}/false_alarm", headers=ADMIN, json={"is_false": False}).json()["false_alarm"] is False
+
+
+def test_heatmap_shape_and_totals():
+    d = client.get("/reports/heatmap").json()
+    assert len(d["cells"]) == 7 and all(len(r) == 24 for r in d["cells"])
+    total = sum(map(sum, d["cells"]))
+    bridge_total = client.get("/bridge/stats", params={"group": "year", "date_from": d["date_from"],
+                                                         "date_to": d["date_to"]}).json()["total_entries"]
+    assert total == bridge_total and sum(d["days"]) == 56
+    assert client.get("/reports/heatmap", params={"date_from": "2026-12-01", "date_to": "2026-11-01"}).status_code == 400
+
+
+def test_daily_report_after_closing_time():
+    from datetime import datetime as dt
+    from backend import daily_report
+    from backend.database import SessionLocal
+    from backend.timeutil import local_now
+    client.put("/config", headers=ADMIN, json={"open_time": "07:00", "close_time": "21:30"})
+    today = local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    with SessionLocal() as db:
+        before = daily_report.run_due(db, today.replace(hour=12), send=False)
+        assert today.strftime("%Y-%m-%d") not in before          # chua toi gio dong cua
+        DOCS.clear()
+        made = daily_report.run_due(db, today.replace(hour=21, minute=31), send=True)
+        assert today.strftime("%Y-%m-%d") in made
+        assert daily_report.run_due(db, today.replace(hour=22), send=True) == []   # khong lap lai
+    lst = client.get("/reports/daily").json()
+    assert lst[0]["date"] == today.strftime("%Y-%m-%d")
+    pdf = client.get(f"/reports/daily/{lst[0]['date']}/pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    r = client.post(f"/reports/daily/{lst[0]['date']}/send", headers=ADMIN).json()
+    assert r["sent_at"] and "Đã gửi" in r["delivery"] and DOCS and DOCS[-1][1][:4] == b"%PDF"
+    assert "BÁO CÁO NGÀY" in daily_report.summary_text(client.get("/reports/summary").json())
+    assert client.post(f"/reports/daily/{lst[0]['date']}/send").status_code == 401
+    client.put("/config", headers=ADMIN, json={"open_time": "00:00", "close_time": "23:59"})

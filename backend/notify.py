@@ -52,3 +52,24 @@ def deliver(recipients: List[dict], text: str) -> List[dict]:
 
 def deliver_async(recipients: List[dict], text: str):
     threading.Thread(target=deliver, args=(list(recipients), text), daemon=True).start()
+
+
+def deliver_document(recipients: List[dict], filename: str, content: bytes, caption: str = "") -> List[dict]:
+    """Gui tep (vd PDF bao cao ngay) qua Telegram sendDocument."""
+    targets = [r for r in recipients if r["channel"] == "telegram"]
+    if not targets and not recipients and TELEGRAM_CHAT_ID:
+        targets = [{"name": "TELEGRAM_CHAT_ID", "channel": "telegram", "address": TELEGRAM_CHAT_ID}]
+    results = []
+    for r in targets:
+        if not TELEGRAM_BOT_TOKEN:
+            status = "Chưa cấu hình TELEGRAM_BOT_TOKEN trên máy chạy backend."
+        else:
+            try:
+                resp = requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendDocument",
+                                     data={"chat_id": r["address"], "caption": caption},
+                                     files={"document": (filename, content, "application/pdf")}, timeout=20)
+                status = "ok" if resp.status_code == 200 else f"Telegram lỗi {resp.status_code}"
+            except requests.RequestException as e:
+                status = f"Không gửi được tệp: {e}"
+        results.append({"name": r["name"], "channel": "telegram", "status": status})
+    return results

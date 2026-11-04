@@ -27,7 +27,7 @@ khoan admin / admin123. Cot moi trong cac bang cu duoc tu bo sung khi khoi dong.
 
 from fastapi import FastAPI
 
-from . import models  # noqa: F401  (dang ky cac bang loi voi Base)
+from . import daily_report, models  # noqa: F401  (dang ky cac bang voi Base)
 from .database import SessionLocal, ensure_schema
 from .routers import accounts, admin, alerts, bridge, counting, demographics, reports, tickets
 from .security import ADMIN_API_KEY, API_KEY
@@ -47,6 +47,12 @@ for r in (counting.router, bridge.router, alerts.router, demographics.router,
 ensure_schema()
 with SessionLocal() as _db:
     accounts.ensure_default_admin(_db)
+
+
+@app.on_event("startup")
+def _start_background_jobs():
+    # Bao cao ngay tu dong sau gio dong cua (FR-11). Tat: SMARTCAU_DISABLE_SCHEDULER=1
+    daily_report.start_scheduler()
 
 
 @app.get("/health", tags=["He thong"])

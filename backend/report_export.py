@@ -43,6 +43,17 @@ def report_tables(r: dict) -> dict:
         ("Đoàn khách lớn", r["alerts"]["GROUP_DETECTED"]),
         ("Mất tín hiệu camera", r["alerts"]["CAMERA_LOST"]),
     ], columns=["Chỉ tiêu", "Giá trị"])
+    k = r.get("kpis") or {}
+
+    def pct(v):
+        return "–" if v is None else f"{v:.1f}%"
+
+    kpi_tbl = pd.DataFrame([
+        ("O1", "Số phút có hơn sức chứa trên cầu", f"{k.get('o1_minutes_over', 0)} phút ({k.get('o1_minutes_per_day', 0)} phút/ngày)", "giảm ≥ 70%"),
+        ("O4", "Sự cố được xử lý trong 3 phút", pct(k.get("o4_handled_within_3min_pct")), "≥ 90%"),
+        ("O5", "Tỷ lệ cảnh báo sai", pct(k.get("o5_false_alarm_pct")), "≤ 5%"),
+        ("O8", "Tỷ lệ chênh lệch lượt vào / vé", pct(k.get("o8_gap_rate_pct")), "xu hướng giảm"),
+    ], columns=["Mã", "Chỉ số", "Kết quả", "Mục tiêu"])
     by_day = pd.DataFrame(r["by_day"]).rename(columns={"date": "Ngày", "entries": "Lượt vào"})
     slots = pd.DataFrame(r["time_slots"]).rename(columns={"slot": "Khung giờ", "entries": "Lượt vào"})
     by15 = pd.DataFrame(r["by_15min"]).rename(columns={"slot": "Khung 15 phút", "entries": "Lượt vào"})
@@ -53,7 +64,7 @@ def report_tables(r: dict) -> dict:
     demo_rows += [(f"Tuổi {k}", v) for k, v in dem["age_range"].items() if v]
     demo = pd.DataFrame(demo_rows, columns=["Nhóm", "Số lượt"])
     demo["Tỷ lệ"] = [f"{v / ident * 100:.1f}%" if n != "Không xác định" else "không tính" for n, v in demo_rows]
-    tables = {"Tổng quan": overview, "Theo ngày": by_day, "Theo khung giờ": slots, "Cơ cấu khách": demo}
+    tables = {"Tổng quan": overview, "Chỉ số KPI": kpi_tbl, "Theo ngày": by_day, "Theo khung giờ": slots, "Cơ cấu khách": demo}
     if not by15.empty:
         tables["Theo 15 phút"] = by15
     return tables
@@ -102,7 +113,8 @@ def to_pdf(r: dict) -> bytes:
         pdf.cell(0, 8, f"  {name}", fill=True, new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
         pdf.set_font(family, "", 10)
-        with pdf.table(col_widths=tuple([3] + [1.4] * (len(df.columns) - 1)), text_align="LEFT",
+        widths = (0.6, 3, 1.8, 1.2) if name == "Chỉ số KPI" else tuple([3] + [1.4] * (len(df.columns) - 1))
+        with pdf.table(col_widths=widths, text_align="LEFT",
                        line_height=6, first_row_as_headings=True) as table:
             table.row([str(c) for c in df.columns])
             for _, row in df.iterrows():
