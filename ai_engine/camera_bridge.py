@@ -76,6 +76,17 @@ HEARTBEAT_SEC = 5.0       # nhip tim -> trang "Camera" biet camera con song (NFR
 ALERT_REPEAT_SEC = 180.0  # BRULE-04
 RECONNECT_SEC = 3.0
 
+OPENCV_FIX_MSG = """
+[LỖI] OpenCV {ver} trên máy này không mở được cửa sổ camera.
+Nguyên nhân: đang cài lẫn bản OpenCV 5 hoặc bản "headless" (không có giao diện),
+thường do pip cài kèm khi cài DeepFace / YOLO. Cách sửa (chạy trong .venv):
+
+  1) pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python opencv-contrib-python-headless
+     (chạy lại lệnh này đến khi cả 4 gói đều báo "not installed")
+  2) pip install --force-reinstall --no-deps "opencv-python>=4.9,<5"
+  3) python -c "import cv2; print(cv2.__version__); cv2.namedWindow('test'); print('OK')"
+"""
+
 LEVEL_VI = {"OK": "Bình thường", "WARNING": "Cảnh báo Vàng", "ALERT": "Vàng · đang xác nhận 15 giây",
             "CRITICAL": "CẢNH BÁO ĐỎ · QUÁ TẢI"}
 LEVEL_BGR = {"OK": (80, 160, 60), "WARNING": (0, 170, 240), "ALERT": (0, 120, 255), "CRITICAL": (40, 40, 210)}
@@ -263,7 +274,11 @@ def main():
     if not cap.isOpened():
         print(f"Không mở được camera/video: {args.source}")
         sys.exit(1)
-    cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    try:
+        cv2.namedWindow(window, cv2.WINDOW_NORMAL)
+    except cv2.error:
+        print(OPENCV_FIX_MSG.format(ver=cv2.__version__))
+        sys.exit(1)
 
     state = _get("/bridge/state") or {"num1": 0, "num2": 0, "onbridge": 0, "dem": 0}
     api_ok = bool(_get("/health"))
