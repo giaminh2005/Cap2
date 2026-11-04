@@ -58,9 +58,9 @@ AGE_ORDER = ["0-5", "6-12", "13-17", "18-24", "25-34", "35-44", "45-54",
 # dinh thuong thay tren web hien dai.
 STATUS_META = {
     "OK": {"label": "Binh thuong", "badge": "ok", "icon": "✅"},
-    "WARNING": {"label": "Gan nguong - theo doi", "badge": "warn", "icon": "⚠️"},
-    "ALERT": {"label": "Vuot nguong - can canh bao", "badge": "alert", "icon": "\U0001F6A8"},
-    "CRITICAL": {"label": "Qua tai nghiem trong", "badge": "critical", "icon": "⛔"},
+    "WARNING": {"label": "Canh bao Vang - cau sap day", "badge": "warn", "icon": "⚠️"},
+    "ALERT": {"label": "Vang - vuot suc chua, dang xac nhan 15 giay", "badge": "alert", "icon": "\U0001F6A8"},
+    "CRITICAL": {"label": "Canh bao Do - qua tai", "badge": "critical", "icon": "⛔"},
 }
 
 

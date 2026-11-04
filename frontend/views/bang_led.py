@@ -27,11 +27,14 @@ if err1 or err2:
 
 count = stats["current_count"]
 threshold = cfg["alert_threshold"]
-yellow_at = round(threshold * 0.75)
+yellow_at = min(threshold, max(1, round(threshold * 0.75)))   # BRULE-02: Vang tu 15 khi toi da 20
+# Muc Do do camera xac dinh (> nguong LIEN TUC 15 giay, giu Do cho toi khi
+# <= 15 nguoi lien tuc 15 giay) va gui len qua /occupancy -> doc current_status.
+level = stats.get("current_status", "OK")
 
-if count > threshold:
-    bg, vi, en = "#7A1F1A", "CẦU ĐANG QUÁ TẢI — VUI LÒNG CHỜ", "BRIDGE FULL — PLEASE WAIT"
-elif count >= yellow_at:
+if level == "CRITICAL":
+    bg, vi, en = "#7A1F1A", "CẦU ĐANG ĐẦY — VUI LÒNG CHỜ", "BRIDGE IS FULL — PLEASE WAIT"
+elif level in ("WARNING", "ALERT") or count >= yellow_at:
     bg, vi, en = "#B7791F", "CẦU SẮP ĐẦY — ĐI CHẬM, KHÔNG DỪNG LẠI", "NEARLY FULL — KEEP MOVING"
 else:
     bg, vi, en = "#2F5D46", "MỜI QUÝ KHÁCH THAM QUAN", "WELCOME — PLEASE ENTER"
