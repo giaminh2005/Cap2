@@ -18,7 +18,7 @@
 
 # --- Nhom 1 - Demo offline co ban (khong can Internet/GPU sau khi cai xong) ---
 #   ai_engine/crowd_counter.py (backend "hog"), tools/data_simulator.py, tools/generate_dashboard.py, tools/demo_run.py
-opencv-python>=4.9
+opencv-python>=4.9,<5     # KHONG dung OpenCV 5: bo HOGDescriptor (hong test) va ban "headless" di kem khong mo duoc cua so camera
 numpy>=1.26
 pandas>=2.2
 matplotlib>=3.8
