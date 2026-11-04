@@ -1,37 +1,90 @@
 """
-frontend/views/nguoi_nhan.py  —  MODULE M7 · F6.3 Nguoi nhan canh bao (FR-13, FR-06)
+frontend/views/nguoi_nhan.py  —  MODULE M7 · F6.3 Nguoi nhan canh bao + ket noi Telegram (FR-13, FR-06)
 Phu trach: KHANH.
 """
 
 import streamlit as st
 
-from common import ApiError, api_delete, api_post, api_put, badge, note, page_header, safe_get
+from common import (ApiError, api_delete, api_get, api_post, api_put, badge, empty, note, page_header, safe_get,
+                    section)
 
-page_header("Hệ thống · Thông báo", "Người nhận cảnh báo", "Người trực và cán bộ quản lý nhận tin nhắn cảnh báo và báo cáo ngày.")
+page_header("Hệ thống · Thông báo", "Người nhận cảnh báo",
+            "Kết nối bot Telegram và quản lý danh sách người trực, cán bộ quản lý nhận cảnh báo và báo cáo ngày.")
 
-CHANNELS = {"Telegram": "telegram", "Zalo OA (chưa hỗ trợ)": "zalo", "SMS (chưa hỗ trợ)": "sms",
-            "Email (chưa hỗ trợ)": "email"}
+# --------------------------------------------------------------- 1. ket noi bot
+section("1 · Kết nối bot Telegram")
+st_tg = safe_get("/telegram/status") or {}
+if st_tg.get("connected"):
+    bot = st_tg["bot"]
+    c1, c2 = st.columns([3, 1])
+    c1.markdown(badge(f"Đã kết nối · @{bot['username']}", "ok") +
+                f"&nbsp; <span style='color:var(--muted);font-size:.88rem'>{bot['name']} · "
+                f"{'token lấy từ biến môi trường TELEGRAM_BOT_TOKEN' if st_tg['source'] == 'env' else 'token lưu trong hệ thống'}"
+                "</span>", unsafe_allow_html=True)
+    if st_tg["source"] == "db" and c2.button("Ngắt kết nối", width="stretch"):
+        api_delete("/telegram/token")
+        st.rerun()
+else:
+    if st_tg.get("error"):
+        st.error(f"Token hiện tại không dùng được: {st_tg['error']}")
+    with st.expander("Hướng dẫn tạo bot Telegram (làm 1 lần, khoảng 3 phút)", expanded=True):
+        st.markdown("""
+1. Mở Telegram, tìm **@BotFather** (có dấu tích xanh) và bấm **Start**.
+2. Gửi lệnh `/newbot`, đặt **tên hiển thị** (vd *SmartCau Chùa Cầu*), rồi đặt **username** kết thúc bằng `bot` (vd `smartcau_hoian_bot`).
+3. BotFather trả về một **token** dạng `7012345678:AAH3k...`. Sao chép và dán vào ô dưới đây.
+""")
+    with st.form("tg_token"):
+        token = st.text_input("Token của bot", type="password", placeholder="7012345678:AAH3k...")
+        if st.form_submit_button("Kết nối", type="primary"):
+            try:
+                r = api_put("/telegram/token", {"token": token})
+                st.success(f"Đã kết nối bot @{r['bot']['username']}.")
+                st.rerun()
+            except ApiError as e:
+                st.error(str(e))
 
-with st.form("add", clear_on_submit=True):
-    st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Thêm người nhận</div>', unsafe_allow_html=True)
-    c1, c2, c3 = st.columns([2, 1.2, 2])
-    name = c1.text_input("Họ tên / vai trò", placeholder="vd: Người trực đầu cầu Bắc")
-    channel = c2.selectbox("Kênh", list(CHANNELS))
-    address = c3.text_input("Địa chỉ nhận", placeholder="Telegram chat_id, vd 123456789")
-    if st.form_submit_button("Thêm", type="primary"):
+# --------------------------------------------------------------- 2. tim chat_id
+section("2 · Thêm người nhận từ Telegram")
+if st_tg.get("connected"):
+    note(f"Mỗi người nhận mở Telegram, tìm <b>@{st_tg['bot']['username']}</b>, bấm <b>Start</b> rồi gửi một tin bất kỳ. "
+         "Muốn gửi vào nhóm trực: thêm bot vào nhóm và nhắn một tin trong nhóm. Sau đó bấm <b>Tìm</b> bên dưới.")
+    if st.button("Tìm người vừa nhắn cho bot"):
         try:
-            api_post("/recipients", {"name": name, "channel": CHANNELS[channel], "address": address})
-            st.success(f"Đã thêm {name}.")
+            st.session_state["tg_chats"] = api_get("/telegram/chats")
         except ApiError as e:
             st.error(str(e))
+    chats = st.session_state.get("tg_chats")
+    if chats is not None:
+        if not chats:
+            empty("Chưa thấy ai nhắn cho bot. Hãy nhắn một tin cho bot rồi bấm Tìm lại.")
+        for ch in chats:
+            a, b, c = st.columns([3, 1.4, 1])
+            a.markdown(f"**{ch['name']}** <span style='color:var(--muted);font-size:.85rem'>· "
+                       f"{'nhóm' if ch['type'] in ('group', 'supergroup') else 'cá nhân'} · chat_id {ch['chat_id']}</span>",
+                       unsafe_allow_html=True)
+            label = b.text_input("Tên hiển thị", value=ch["name"], key=f"n{ch['chat_id']}", label_visibility="collapsed")
+            if ch["added"]:
+                c.markdown(badge("Đã thêm", "ok"), unsafe_allow_html=True)
+            elif c.button("Thêm", key=f"add{ch['chat_id']}", type="primary", width="stretch"):
+                try:
+                    api_post("/recipients", {"name": label, "channel": "telegram", "address": ch["chat_id"]})
+                    ch["added"] = True
+                    st.rerun()
+                except ApiError as e:
+                    st.error(str(e))
+else:
+    empty("Kết nối bot ở bước 1 trước.")
 
+# --------------------------------------------------------------- 3. danh sach
+section("3 · Danh sách người nhận")
 rows = safe_get("/recipients") or []
 if not rows:
-    st.info("Chưa có người nhận nào. Nếu máy chủ có biến TELEGRAM_CHAT_ID, cảnh báo sẽ gửi tới chat đó.")
+    empty("Chưa có người nhận nào.")
 for r in rows:
     with st.container(border=True):
-        c1, c2, c3, c4 = st.columns([3, 1.2, 1, 1])
-        c1.markdown(f"**{r['name']}**  \n{r['channel_label']} · `{r['address']}`")
+        c1, c2, c3, c4 = st.columns([3, 1, 1, 1])
+        c1.markdown(f"**{r['name']}**  \n<span style='color:var(--muted);font-size:.86rem'>{r['channel_label']} · "
+                    f"{r['address']}</span>", unsafe_allow_html=True)
         c1.markdown(badge("Đang nhận" if r["active"] else "Tạm tắt", "ok" if r["active"] else "muted"),
                     unsafe_allow_html=True)
         if c2.button("Tắt" if r["active"] else "Bật", key=f"t{r['id']}", width="stretch"):
@@ -48,8 +101,18 @@ for r in rows:
             api_delete(f"/recipients/{r['id']}")
             st.rerun()
 
-note("<b>Cách lấy Telegram chat_id:</b> tạo bot bằng @BotFather, đặt token vào biến môi trường "
-     "<code>TELEGRAM_BOT_TOKEN</code> trên máy chạy backend. Người nhận nhắn bất kỳ tin nào cho bot, rồi mở "
-     "<code>https://api.telegram.org/bot&lt;token&gt;/getUpdates</code> để xem <code>chat.id</code>. "
-     "Tin nhắn được gửi khi: cảnh báo Vàng, cảnh báo Đỏ (nhắc lại tối đa 1 lần mỗi 3 phút), đoàn khách lớn, "
-     "mất tín hiệu camera và khi sự cố đóng.")
+with st.expander("Thêm người nhận bằng tay"):
+    with st.form("add", clear_on_submit=True):
+        c1, c2 = st.columns([2, 2])
+        name = c1.text_input("Họ tên / vai trò", placeholder="vd: Người trực đầu cầu Bắc")
+        address = c2.text_input("Telegram chat_id", placeholder="vd 123456789 hoặc -100123... (nhóm)")
+        if st.form_submit_button("Thêm", type="primary"):
+            try:
+                api_post("/recipients", {"name": name, "channel": "telegram", "address": address})
+                st.success(f"Đã thêm {name}.")
+            except ApiError as e:
+                st.error(str(e))
+
+note("Tin nhắn được gửi khi có: cảnh báo Vàng, cảnh báo Đỏ (nhắc lại tối đa 1 lần mỗi 3 phút), đoàn khách lớn, "
+     "mất tín hiệu camera, sự cố đóng, và báo cáo ngày (kèm tệp PDF) sau giờ đóng cửa. "
+     "Kênh Zalo OA chưa hỗ trợ trong MVP: Zalo yêu cầu OA đã xác thực doanh nghiệp và mẫu tin ZNS có phí.")

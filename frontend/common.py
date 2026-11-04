@@ -142,7 +142,9 @@ _THEME_CSS_RAW = (
         .stButton > button[kind="primary"], .stFormSubmitButton > button[kind="primary"], .stDownloadButton > button[kind="primary"] {
             background: var(--oxblood); border-color: var(--oxblood); color: #FBF4E8; }
         .stButton > button[kind="primary"]:hover, .stFormSubmitButton > button[kind="primary"]:hover { background: #63190F; border-color: #63190F; }
+        /* o nhap lieu: nen + vien dat o .streamlit/config.toml (secondaryBackgroundColor, showWidgetBorder) */
         [data-baseweb="input"], [data-baseweb="select"] > div, [data-baseweb="textarea"] { border-radius: 2px !important; }
+        [data-testid="stWidgetLabel"] p { font-size: .82rem; font-weight: 500; color: #4E453D; letter-spacing: .01em; }
         [data-testid="stDataFrame"] { border: 1px solid var(--line); }
         [data-baseweb="tab-list"] { gap: 24px; border-bottom: 1px solid var(--line); }
         [data-baseweb="tab"] { font-weight: 500; letter-spacing: .02em; }
@@ -400,6 +402,8 @@ def login_page():
         if not api_is_up():
             alert_box("Chưa kết nối được máy chủ. Hãy chạy backend trước: "
                       "<code>uvicorn backend.main:app --reload --port 8000</code>", "warn")
+        st.markdown("<style>div[data-testid='stForm']{background:transparent !important;border:none !important;padding:0 !important}"
+                    "[data-baseweb='input']{height:46px}</style>", unsafe_allow_html=True)
         with st.form("login", border=False):
             username = st.text_input("Tên đăng nhập")
             password = st.text_input("Mật khẩu", type="password")

@@ -13,6 +13,10 @@ Phu trach: KHANH.
     POST /recipients/{id}/test        (admin) gui tin nhan thu
     GET  /privacy/summary             (quan ly) du lieu dang luu tru
     POST /privacy/purge?older_than_days=   (admin) xoa du lieu cu hon N ngay (>= 730, BRULE-09)
+    GET  /telegram/status             (admin) bot da ket noi chua, ten bot
+    PUT  /telegram/token              (admin) luu token bot (kiem tra bang getMe truoc khi luu)
+    DELETE /telegram/token            (admin) ngat ket noi
+    GET  /telegram/chats              (admin) cac chat vua nhan tin cho bot -> lay chat_id
 """
 
 import re
@@ -226,3 +230,70 @@ def purge(older_than_days: int, p: Principal = Depends(require_admin), db: Sessi
     log_audit(db, p.username, "Xóa dữ liệu cũ", f"{n} dòng cũ hơn {older_than_days} ngày")
     db.commit()
     return {"deleted_rows": n}
+
+
+# ------------------------------------------------------------------ Telegram
+class TelegramTokenIn(BaseModel):
+    token: str
+
+
+def load_telegram_token(db: Session):
+    notify.set_db_token(get_config(db).telegram_token or "")
+
+
+@router.get("/telegram/status")
+def telegram_status(p: Principal = Depends(require_admin), db: Session = Depends(get_db)):
+    load_telegram_token(db)
+    if not notify.telegram_token():
+        return {"connected": False, "source": "", "bot": None, "error": None}
+    ok, res = notify.telegram_api("getMe")
+    return {"connected": ok, "source": notify.token_source(),
+            "bot": {"username": res.get("username"), "name": res.get("first_name")} if ok else None,
+            "error": None if ok else res}
+
+
+@router.put("/telegram/token")
+def set_telegram_token(payload: TelegramTokenIn, p: Principal = Depends(require_admin), db: Session = Depends(get_db)):
+    token = payload.token.strip()
+    if ":" not in token:
+        raise HTTPException(status_code=400, detail="Token không đúng dạng (vd 123456789:AAH...). Lấy token từ @BotFather.")
+    ok, res = notify.telegram_api("getMe", token=token)
+    if not ok:
+        raise HTTPException(status_code=400, detail=f"Telegram từ chối token: {res}")
+    cfg = get_config(db)
+    cfg.telegram_token = token
+    log_audit(db, p.username, "Kết nối Telegram", f"bot @{res.get('username')}")
+    db.commit()
+    notify.set_db_token(token)
+    return {"connected": True, "bot": {"username": res.get("username"), "name": res.get("first_name")}}
+
+
+@router.delete("/telegram/token")
+def clear_telegram_token(p: Principal = Depends(require_admin), db: Session = Depends(get_db)):
+    cfg = get_config(db)
+    cfg.telegram_token = None
+    log_audit(db, p.username, "Ngắt kết nối Telegram", "")
+    db.commit()
+    notify.set_db_token("")
+    return {"connected": bool(notify.telegram_token())}
+
+
+@router.get("/telegram/chats")
+def telegram_chats(p: Principal = Depends(require_admin), db: Session = Depends(get_db)):
+    """Danh sach chat vua nhan tin cho bot (getUpdates) de lay chat_id ma khong can mo trinh duyet."""
+    load_telegram_token(db)
+    ok, res = notify.telegram_api("getUpdates", limit=100)
+    if not ok:
+        raise HTTPException(status_code=400, detail=res)
+    known = {r.address for r in db.query(Recipient).all()}
+    chats = {}
+    for upd in res:
+        msg = upd.get("message") or upd.get("channel_post") or upd.get("my_chat_member") or {}
+        chat = msg.get("chat")
+        if not chat:
+            continue
+        name = chat.get("title") or " ".join(x for x in (chat.get("first_name"), chat.get("last_name")) if x) \
+            or chat.get("username") or str(chat["id"])
+        chats[str(chat["id"])] = {"chat_id": str(chat["id"]), "name": name, "type": chat.get("type"),
+                                  "username": chat.get("username"), "added": str(chat["id"]) in known}
+    return list(chats.values())

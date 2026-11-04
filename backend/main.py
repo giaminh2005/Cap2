@@ -47,6 +47,7 @@ for r in (counting.router, bridge.router, alerts.router, demographics.router,
 ensure_schema()
 with SessionLocal() as _db:
     accounts.ensure_default_admin(_db)
+    admin.load_telegram_token(_db)        # token bot luu trong CSDL (trang Nguoi nhan canh bao)
 
 
 @app.on_event("startup")

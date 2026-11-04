@@ -79,6 +79,7 @@ class SystemConfig(Base):
     close_time = Column(String, default="21:30")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
     updated_by = Column(String, nullable=True)
+    telegram_token = Column(String, nullable=True)   # token bot Telegram (chi admin xem/sua)
 
 
 class User(Base):

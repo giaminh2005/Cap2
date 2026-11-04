@@ -2,9 +2,10 @@
 base = "light"
 primaryColor = "#7D2318"
 backgroundColor = "#F5F0E6"
-secondaryBackgroundColor = "#EFE7D9"
+secondaryBackgroundColor = "#FBF8F2"
 textColor = "#1F1A17"
-borderColor = "#E3D9C8"
+borderColor = "#D9CDB9"
+showWidgetBorder = true
 baseRadius = "small"
 font = "sans serif"
 

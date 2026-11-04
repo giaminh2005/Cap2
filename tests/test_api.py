@@ -297,3 +297,46 @@ def test_daily_report_after_closing_time():
     assert "BÁO CÁO NGÀY" in daily_report.summary_text(client.get("/reports/summary").json())
     assert client.post(f"/reports/daily/{lst[0]['date']}/send").status_code == 401
     client.put("/config", headers=ADMIN, json={"open_time": "00:00", "close_time": "23:59"})
+
+
+# ------------------------------------------------- ket noi Telegram tren giao dien
+class _FakeResp:
+    def __init__(self, data, code=200):
+        self._d, self.status_code = data, code
+
+    def json(self):
+        return self._d
+
+
+def test_telegram_connect_and_find_chats(monkeypatch):
+    calls = []
+
+    def fake_post(url, json=None, timeout=None, **kw):
+        calls.append(url)
+        if "BADTOKEN" in url:
+            return _FakeResp({"ok": False, "description": "Unauthorized"}, 401)
+        if url.endswith("/getMe"):
+            return _FakeResp({"ok": True, "result": {"username": "smartcau_bot", "first_name": "SmartCau"}})
+        if url.endswith("/getUpdates"):
+            return _FakeResp({"ok": True, "result": [
+                {"message": {"chat": {"id": 111, "first_name": "Lê", "last_name": "Hoan", "type": "private"}}},
+                {"message": {"chat": {"id": -222, "title": "Nhóm trực Chùa Cầu", "type": "group"}}},
+                {"message": {"chat": {"id": 111, "first_name": "Lê", "last_name": "Hoan", "type": "private"}}}]})
+        return _FakeResp({"ok": True, "result": {}})
+
+    monkeypatch.setattr(notify.requests, "post", fake_post)
+    monkeypatch.setattr(notify, "ENV_TELEGRAM_TOKEN", "")
+    notify.set_db_token("")
+    assert client.get("/telegram/status", headers=ADMIN).json()["connected"] is False
+    assert client.put("/telegram/token", headers=ADMIN, json={"token": "khong-hop-le"}).status_code == 400
+    assert client.put("/telegram/token", headers=ADMIN, json={"token": "1:BADTOKEN"}).status_code == 400
+    r = client.put("/telegram/token", headers=ADMIN, json={"token": "123:GOODTOKEN"}).json()
+    assert r["bot"]["username"] == "smartcau_bot"
+    st = client.get("/telegram/status", headers=ADMIN).json()
+    assert st["connected"] and st["source"] == "db"
+    chats = client.get("/telegram/chats", headers=ADMIN).json()
+    assert {c["chat_id"] for c in chats} == {"111", "-222"} and any(c["name"] == "Lê Hoan" for c in chats)
+    assert notify._send_telegram("111", "thử") == "ok"
+    assert client.get("/telegram/chats").status_code == 401
+    assert client.delete("/telegram/token", headers=ADMIN).json()["connected"] is False
+    assert "Chưa kết nối bot" in notify._send_telegram("111", "thử")
