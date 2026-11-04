@@ -35,7 +35,7 @@ import time
 import cv2
 import requests
 
-from crowd_counter import CameraThresholds, STATUS_COLOR_BGR, STATUS_LABEL_VI
+from crowd_counter import AlertLevelTracker, CameraThresholds, STATUS_COLOR_BGR, STATUS_LABEL_VI
 from camera_backend import open_camera, parse_camera_source
 from camera_ui import draw_person_box, draw_status_bar, draw_capacity_banner, draw_countdown
 
@@ -90,11 +90,12 @@ def main():
     _remote_alert = get_remote_alert_threshold()
     if _remote_alert is not None:
         thresholds = CameraThresholds.from_alert_threshold(_remote_alert)
-        print(f"[CAMERA RA] Da doc nguong canh bao tu server: alert={thresholds.alert} "
-              f"(warning={thresholds.warning}, critical={thresholds.critical}).")
+        print(f"[CAMERA RA] Da doc nguong canh bao tu server: toi da={thresholds.alert} "
+              f"(Vang tu {thresholds.warning}).")
     else:
         print("[CAMERA RA] Khong doc duoc nguong tu server luc khoi dong, dung nguong mac dinh "
-              f"(warning={thresholds.warning}, alert={thresholds.alert}, critical={thresholds.critical}).")
+              f"(Vang tu {thresholds.warning}, toi da {thresholds.alert}).")
+    tracker = AlertLevelTracker(thresholds)
 
     model = YOLO("yolov8n.pt")
 
@@ -146,23 +147,25 @@ def main():
             _remote_alert = get_remote_alert_threshold()
             if _remote_alert is not None and _remote_alert != thresholds.alert:
                 thresholds = CameraThresholds.from_alert_threshold(_remote_alert)
+                tracker.set_thresholds(thresholds)
                 print(f"[CAMERA RA] Admin da doi nguong canh bao -> ap dung nguong moi: "
-                      f"warning={thresholds.warning}, alert={thresholds.alert}, critical={thresholds.critical}.")
+                      f"Vang tu {thresholds.warning}, toi da {thresholds.alert}.")
             last_config_poll_time = now
 
-        status = thresholds.status_of(shared_count)
+        # Camera RA chi HIEN THI muc canh bao (camera VAO moi gui tin nhan)
+        status = tracker.update(shared_count, now)
         api_note = "" if api_reachable else " | MAT KET NOI SERVER"
         draw_status_bar(
             out,
-            f"CAMERA RA | Dang co mat: {shared_count}/{thresholds.critical} | "
+            f"CAMERA RA | Dang co mat: {shared_count}/{thresholds.alert} | "
             f"{STATUS_LABEL_VI[status]} | Da ghi nhan {len(seen_ids)} luot ra{api_note}",
         )
 
         if shared_count >= thresholds.warning:
-            draw_countdown(out, thresholds.critical - shared_count)
+            draw_countdown(out, thresholds.alert - shared_count)
 
-        if shared_count >= thresholds.critical:
-            draw_capacity_banner(out, f"QUA TAI! {shared_count} nguoi tren cau (toi da {thresholds.critical})")
+        if status == "CRITICAL":
+            draw_capacity_banner(out, f"QUA TAI! {shared_count} nguoi tren cau (toi da {thresholds.alert})")
 
         cv2.imshow("SmartCau AI - CAMERA RA (nhan 'q' de thoat)", out)
         if cv2.waitKey(1) & 0xFF == ord("q"):

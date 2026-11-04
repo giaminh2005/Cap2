@@ -66,9 +66,8 @@ def chart_occupancy_day(occupancy: pd.DataFrame, thresholds: CameraThresholds) -
     fig, ax = plt.subplots(figsize=(9.5, 3.6))
     ax.fill_between(day_df["timestamp"], day_df["occupancy"], color="#93c5fd", alpha=0.4)
     ax.plot(day_df["timestamp"], day_df["occupancy"], color="#2563eb", linewidth=1.6)
-    ax.axhline(thresholds.warning, color="#f59e0b", linestyle="--", linewidth=1, label=f"Nguong theo doi ({thresholds.warning})")
-    ax.axhline(thresholds.alert, color="#f97316", linestyle="--", linewidth=1, label=f"Nguong canh bao ({thresholds.alert})")
-    ax.axhline(thresholds.critical, color="#ef4444", linestyle="--", linewidth=1, label=f"Nguong qua tai ({thresholds.critical})")
+    ax.axhline(thresholds.warning, color="#f59e0b", linestyle="--", linewidth=1, label=f"Canh bao Vang (tu {thresholds.warning})")
+    ax.axhline(thresholds.alert, color="#ef4444", linestyle="--", linewidth=1, label=f"Suc chua toi da ({thresholds.alert}) - Do khi vuot lien tuc {int(thresholds.red_hold_sec)}s")
     ax.set_title(f"So nguoi tren Chua Cau theo thoi gian thuc - ngay {peak_date} (mo phong)")
     ax.set_ylabel("So nguoi dang co mat")
     ax.xaxis.set_major_formatter(matplotlib.dates.DateFormatter("%H:%M"))
@@ -312,7 +311,7 @@ def build_html(visitors: pd.DataFrame, occupancy: pd.DataFrame, thresholds: Came
 <body>
 <header>
   <h1>SmartCau AI &mdash; Dashboard Giam sat Dam dong & Phan tich Khach du lich (Ban demo)</h1>
-  <p>Di tich Chua Cau, Hoi An &middot; Du lieu: {n_days} ngay MO PHONG (khong phai so lieu thuc te da cong bo) &middot; Nguong an toan: {thresholds.alert}&ndash;{thresholds.critical} nguoi</p>
+  <p>Di tich Chua Cau, Hoi An &middot; Du lieu: {n_days} ngay MO PHONG (khong phai so lieu thuc te da cong bo) &middot; Vang tu {thresholds.warning} nguoi, suc chua toi da {thresholds.alert} nguoi</p>
 </header>
 <div class="wrap">
 

@@ -13,11 +13,16 @@ CAMERA VAO (dat o dau cau) - phien ban NANG CAP (Phase 1 + 2 + 3 + 4):
     cay >= 70%) - luu MOT LAN duy nhat (POST /entry).
   - Man hinh hien SO NGUOI DANG CO MAT tren cau lay TU SERVER (dung chung
     voi camera_out.py) - de 2 man hinh luon khop nhau.
-  - KIEM SOAT CONG TU DONG (Phase 4): khi dang co mat >= nguong "alert"
-    (mac dinh 20), hien banner "CHO - CAU DANG DAY" + dem nguoc "Con X
-    cho trong"; khi >= nguong "critical" (mac dinh 25), hien canh bao do
-    lon + gui Telegram + kich hoat tin hieu buzzer (co cooldown chong
-    spam) + ghi lai su kien vao server (xem SystemEvent trong backend/).
+  - KIEM SOAT CONG TU DONG (Phase 4): khi dang co mat >= suc chua (mac
+    dinh 20), hien banner "CHO - CAU DANG DAY" + dem nguoc "Con X cho trong".
+  - MUC CANH BAO THEO BRD (FR-04, FR-06, BRULE-02, BRULE-04 - xem
+    AlertLevelTracker trong crowd_counter.py):
+      * VANG khi tu 15 nguoi -> gui Telegram + ghi su kien "WARNING".
+      * DO khi tren 20 nguoi LIEN TUC 15 giay -> canh bao do + Telegram +
+        buzzer + ghi su kien "CRITICAL_ALERT"; nhac lai toi da 1 lan / 3 phut.
+      * Ve Binh thuong khi <= 15 nguoi lien tuc 15 giay.
+    Muc canh bao duoc gui len server (POST /occupancy) moi 2 giay de
+    dashboard va bang LED hien dung muc.
 
 BAT BUOC chay backend TRUOC o 1 terminal khac (moi lenh chay tu THU MUC GOC Cap2/):
     Terminal 1:  uvicorn backend.main:app --reload --port 8000
@@ -70,7 +75,7 @@ import time
 import cv2
 import requests
 
-from crowd_counter import CameraThresholds, STATUS_COLOR_BGR, STATUS_LABEL_VI
+from crowd_counter import AlertLevelTracker, CameraThresholds, STATUS_COLOR_BGR, STATUS_LABEL_VI
 from camera_backend import open_camera, parse_camera_source
 from demographics_engine import DemographicsEngine
 from telegram_alert import send_telegram_alert, trigger_buzzer_signal
@@ -95,7 +100,8 @@ SOLO_DEMO = os.environ.get("SMARTCAU_SOLO_DEMO", "").strip() in ("1", "true", "T
 
 OCCUPANCY_POLL_INTERVAL_SEC = 1.0   # hoi server "hien co bao nhieu nguoi" moi 1 giay
 CONFIG_POLL_INTERVAL_SEC = 15.0     # NANG CAP (Admin Web): hoi server "nguong canh bao hien tai" moi 15 giay
-ALERT_COOLDOWN_SEC = 60.0
+OCCUPANCY_REPORT_INTERVAL_SEC = 2.0  # FR-10/NFR-01: gui so nguoi + muc canh bao len server moi 2 giay
+ALERT_REPEAT_SEC = 180.0             # BRULE-04: cung 1 su co khong gui lap qua 1 lan trong 3 phut
 
 
 def get_shared_occupancy(default=0):
@@ -153,6 +159,15 @@ def post_system_event(event_type: str, count: int = None, message: str = None):
         print(f"[API] Khong ghi duoc su kien he thong: {e}")
 
 
+def post_occupancy(count: int, status: str):
+    """Bao cao so nguoi + muc canh bao (OK/WARNING/ALERT/CRITICAL) cho dashboard."""
+    try:
+        requests.post(f"{API_BASE}/occupancy", json={"count": count, "status": status},
+                      headers=_API_HEADERS, timeout=2)
+    except requests.RequestException:
+        pass
+
+
 def post_region_stat(region: str):
     try:
         requests.post(f"{API_BASE}/region_stats", json={"region": region}, headers=_API_HEADERS, timeout=2)
@@ -187,12 +202,12 @@ def main():
     _remote_alert = get_remote_alert_threshold()
     if _remote_alert is not None:
         thresholds = CameraThresholds.from_alert_threshold(_remote_alert)
-        print(f"[CAMERA VAO] Da doc nguong canh bao tu server: alert={thresholds.alert} "
-              f"(warning={thresholds.warning}, critical={thresholds.critical}).")
+        print(f"[CAMERA VAO] Da doc nguong canh bao tu server: toi da={thresholds.alert} "
+              f"(Vang tu {thresholds.warning}).")
     else:
         print("[CAMERA VAO] Khong doc duoc nguong tu server luc khoi dong, "
-              f"dung nguong mac dinh (warning={thresholds.warning}, alert={thresholds.alert}, "
-              f"critical={thresholds.critical}).")
+              f"dung nguong mac dinh (Vang tu {thresholds.warning}, toi da {thresholds.alert}).")
+    tracker = AlertLevelTracker(thresholds, repeat_sec=ALERT_REPEAT_SEC)
 
     model = YOLO("yolov8n-pose.pt")  # model POSE: co ca box + khop xuong (keypoints) cho tin hieu phu
 
@@ -213,7 +228,7 @@ def main():
     shared_count = 0          # so nguoi dang co mat, lay tu server
     last_poll_time = 0.0
     last_config_poll_time = 0.0
-    last_alert_time = 0.0
+    last_report_time = 0.0
     last_gate_event_time = 0.0
     api_reachable = True
     gate_was_closed = False
@@ -316,25 +331,29 @@ def main():
             _remote_alert = get_remote_alert_threshold()
             if _remote_alert is not None and _remote_alert != thresholds.alert:
                 thresholds = CameraThresholds.from_alert_threshold(_remote_alert)
+                tracker.set_thresholds(thresholds)
                 print(f"[CAMERA VAO] Admin da doi nguong canh bao -> ap dung nguong moi: "
-                      f"warning={thresholds.warning}, alert={thresholds.alert}, critical={thresholds.critical}.")
+                      f"Vang tu {thresholds.warning}, toi da {thresholds.alert}.")
             last_config_poll_time = now
 
-        status = thresholds.status_of(shared_count)
+        status = tracker.update(shared_count, now)
+        if now - last_report_time >= OCCUPANCY_REPORT_INTERVAL_SEC:
+            post_occupancy(shared_count, status)
+            last_report_time = now
         if SOLO_DEMO:
             api_note = " | DEMO 1 CAMERA (dem khung hinh hien tai)"
         else:
             api_note = "" if api_reachable else " | MAT KET NOI SERVER"
         draw_status_bar(
             out,
-            f"CAMERA VAO | Dang co mat: {shared_count}/{thresholds.critical} | "
+            f"CAMERA VAO | Dang co mat: {shared_count}/{thresholds.alert} | "
             f"{STATUS_LABEL_VI[status]}{api_note}",
         )
 
         # --- Phase 4: kiem soat cong tu dong ---
         gate_closed = shared_count >= thresholds.alert
         if shared_count >= thresholds.warning:
-            draw_countdown(out, thresholds.critical - shared_count)
+            draw_countdown(out, thresholds.alert - shared_count)
         if gate_closed:
             draw_gate_banner(out, f"CHO - CAU DANG DAY ({shared_count}/{thresholds.alert})")
             if not gate_was_closed and now - last_gate_event_time >= 5.0:
@@ -345,17 +364,27 @@ def main():
             last_gate_event_time = now
         gate_was_closed = gate_closed
 
-        if shared_count >= thresholds.critical:
-            draw_capacity_banner(out, f"QUA TAI! {shared_count} nguoi tren cau (toi da {thresholds.critical})")
-            if now - last_alert_time >= ALERT_COOLDOWN_SEC:
+        if status == "CRITICAL":
+            draw_capacity_banner(out, f"QUA TAI! {shared_count} nguoi tren cau (toi da {thresholds.alert})")
+
+        notify = tracker.pop_notification(now)
+        if notify is not None:
+            stamp = time.strftime("%H:%M:%S %d/%m/%Y")
+            if notify == "CRITICAL":
                 msg = (
-                    f"[SmartCau AI] CANH BAO QUA TAI: {shared_count} nguoi dang tren cau "
-                    f"(toi da {thresholds.critical}). Can kiem tra ngay!"
+                    f"[SmartCau AI] CANH BAO DO - QUA TAI: {shared_count} nguoi dang tren cau "
+                    f"(toi da {thresholds.alert}), vuot nguong lien tuc {int(thresholds.red_hold_sec)} giay. "
+                    f"Thoi diem: {stamp}. Can kiem tra ngay!"
                 )
-                send_telegram_alert(msg)
                 trigger_buzzer_signal(msg)
                 post_system_event("CRITICAL_ALERT", count=shared_count, message=msg)
-                last_alert_time = now
+            else:
+                msg = (
+                    f"[SmartCau AI] CANH BAO VANG - CAU SAP DAY: {shared_count} nguoi dang tren cau "
+                    f"(Vang tu {thresholds.warning}, toi da {thresholds.alert}). Thoi diem: {stamp}."
+                )
+                post_system_event("WARNING", count=shared_count, message=msg)
+            send_telegram_alert(msg)
 
         cv2.imshow("SmartCau AI - CAMERA VAO (nhan 'q' de thoat)", out)
         if cv2.waitKey(1) & 0xFF == ord("q"):
