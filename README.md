@@ -64,6 +64,8 @@ Mỗi chân cầu 1 camera quay từ cầu ra chân cầu, kẻ 1 vạch ngang l
 | 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1` (chân cầu 2) |
 | — | **hoặc** `python tools/simulate_bridge.py` để giả lập 2 camera |
 
+Ước lượng giới tính, khoảng tuổi cho khách **vào cầu**: thêm `--demographics` (cần DeepFace, xem `ai_engine/visitor_profiler.py`). Thêm `--region` để thống kê nhóm khu vực rộng (chỉ lưu số tổng hợp theo giờ, **không phải quốc tịch**). Khuôn mặt luôn được làm mờ trên màn hình (tắt bằng `--no-blur`).
+
 Trên cửa sổ camera nhấn `l` để kẻ lại vạch bằng chuột (2 điểm của vạch + 1 điểm phía cầu), vạch lưu ở `ai_engine/config/`. Thống kê xem ở trang **Lượt qua cầu**. Không chạy chung với `camera_in.py` / `camera_out.py` vì cả hai cùng ghi số người trên cầu.
 
 Kiểm thử trước khi tạo Pull Request: `pytest tests/ -q`

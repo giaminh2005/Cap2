@@ -24,9 +24,14 @@ Vach duoc luu vao ai_engine/config/line_cam<id>.json, lan sau tu doc lai.
 Tuy chon:
     --no-alerts      tat gui canh bao (mac dinh CHI camera 1 gui canh bao
                      Vang/Do + Telegram de khong bi gui trung 2 lan)
-    --demographics   uoc luong gioi tinh/tuoi cho khach VAO (can DeepFace,
-                     cham hon) va luu qua POST /visit_events
-    --model          model YOLO (mac dinh yolov8n.pt)
+    --demographics   uoc luong gioi tinh + khoang tuoi cho khach VAO cau
+                     (can DeepFace, cham hon) - xem visitor_profiler.py.
+                     Tu dung model pose yolov8n-pose.pt de lay vi tri mat.
+    --region         (kem --demographics) uoc luong NHOM KHU VUC rong, chi
+                     luu so dem tong hop theo gio. KHONG phai quoc tich.
+    --no-blur        tat lam mo khuon mat tren man hinh (mac dinh BAT, NFR-05)
+    --model          model YOLO (mac dinh yolov8n.pt, hoac yolov8n-pose.pt
+                     khi bat --demographics)
 
 Phim: 'q' thoat · 'l' ke lai vach · 'r' xoa vach da luu, ve vach mac dinh.
 """
@@ -51,10 +56,11 @@ except ImportError:
     sys.exit(1)
 
 from camera_backend import open_camera
-from camera_ui import draw_capacity_banner, draw_person_box, draw_status_bar
+from camera_ui import draw_capacity_banner, draw_info_panel, draw_person_box, draw_status_bar
 from crowd_counter import AlertLevelTracker, CameraThresholds, STATUS_COLOR_BGR, STATUS_LABEL_VI
 from line_crossing import LineCrossingCounter, foot_point
 from telegram_alert import send_telegram_alert, trigger_buzzer_signal
+from visitor_profiler import VisitorProfiler, blur_faces, extract_keypoints, face_rect
 
 API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")
 API_KEY = os.environ.get("SMARTCAU_API_KEY", "")
@@ -175,8 +181,14 @@ def parse_args(argv=None):
     ap.add_argument("--source", default="0", help="So webcam (0, 1...) hoac duong dan video/RTSP")
     ap.add_argument("--no-alerts", action="store_true", help="Khong gui canh bao tu camera nay")
     ap.add_argument("--demographics", action="store_true", help="Uoc luong gioi tinh/tuoi khach VAO")
-    ap.add_argument("--model", default="yolov8n.pt")
+    ap.add_argument("--region", action="store_true", help="Kem --demographics: thong ke nhom khu vuc tong hop")
+    ap.add_argument("--no-blur", action="store_true", help="Khong lam mo khuon mat tren man hinh")
+    ap.add_argument("--model", default=None)
     args = ap.parse_args(argv)
+    if args.region and not args.demographics:
+        ap.error("--region can di kem --demographics")
+    if args.model is None:
+        args.model = "yolov8n-pose.pt" if args.demographics else "yolov8n.pt"
     args.source = int(args.source) if args.source.isdigit() else args.source
     args.send_alerts = (args.camera_id == 1) and not args.no_alerts
     return args
@@ -193,12 +205,11 @@ def main():
         thresholds = CameraThresholds.from_alert_threshold(remote)
     tracker = AlertLevelTracker(thresholds, repeat_sec=ALERT_REPEAT_SEC)
 
-    engine = None
+    profiler = None
     if args.demographics:
-        from demographics_engine import DemographicsEngine
-        engine = DemographicsEngine()
-    demo_pending = set()   # track_id da VAO cau, dang cho ket qua gioi tinh/tuoi
-    demo_done = set()
+        profiler = VisitorProfiler(post=_post, enable_region=args.region)
+        print(f"[CAMERA {cam}] Uoc luong gioi tinh/tuoi: BAT"
+              f"{' + nhom khu vuc (tong hop)' if args.region else ''}.")
 
     model = YOLO(args.model)
     line = load_line(cam)
@@ -227,38 +238,54 @@ def main():
         out = frame.copy()
         draw_line_overlay(out, line)
 
+        people = []   # (tid, box, keypoints, kp_conf)
         if results.boxes is not None and results.boxes.id is not None:
-            for box, tid in zip(results.boxes, results.boxes.id):
+            for i, (box, tid) in enumerate(zip(results.boxes, results.boxes.id)):
                 x1, y1, x2, y2 = box.xyxy[0].tolist()
                 b = (int(x1), int(y1), int(x2 - x1), int(y2 - y1))
-                tid = int(tid)
-                fx, fy = foot_point(b, fw, fh)
-                side_color = (0, 200, 0) if line.signed_distance((fx, fy)) > 0 else (200, 120, 0)
-                draw_person_box(out, b, tid, side_color)
-                cv2.circle(out, (int(fx * fw), int(fy * fh)), 4, side_color, -1)
+                kp_xy, kp_conf = extract_keypoints(results, i)
+                people.append((int(tid), b, kp_xy, kp_conf))
 
-                event = line.update(tid, (fx, fy), now)
-                if event:
-                    if event == "in":
-                        local_in += 1
-                        if engine is not None and tid not in demo_done:
-                            demo_pending.add(tid)
-                    else:
-                        local_out += 1
-                    res = _post("/bridge/crossing", {"camera_id": cam, "direction": event, "track_id": tid})
-                    api_ok = res is not None
-                    if res:
-                        state = res
-                    print(f"[CAMERA {cam}] ID {tid} {'VAO' if event == 'in' else 'RA'} cau"
-                          f" -> tren cau: {state.get('onbridge')}")
+        # NFR-05: lam mo mat tren anh HIEN THI truoc khi ve chu/khung len
+        if not args.no_blur:
+            blur_faces(out, [face_rect(b, kp, kc) for _, b, kp, kc in people])
 
-                if engine is not None and tid in demo_pending:
-                    info = engine.update(tid, frame, b)
-                    if info["ready"]:
-                        _post("/visit_events", {"track_id": tid, "age": info["age"],
-                                                "age_range": info["age_range"], "gender": info["gender"]})
-                        demo_pending.discard(tid)
-                        demo_done.add(tid)
+        for tid, b, kp_xy, kp_conf in people:
+            fx, fy = foot_point(b, fw, fh)
+            on_bridge_side = line.signed_distance((fx, fy)) > 0
+            side_color = (0, 200, 0) if on_bridge_side else (200, 120, 0)
+            draw_person_box(out, b, tid, side_color)
+            cv2.circle(out, (int(fx * fw), int(fy * fh)), 4, side_color, -1)
+
+            event = line.update(tid, (fx, fy), now)
+            if event:
+                if event == "in":
+                    local_in += 1
+                    if profiler is not None:
+                        profiler.mark_entered(tid, now)
+                else:
+                    local_out += 1
+                    if profiler is not None:
+                        profiler.mark_exited(tid)
+                res = _post("/bridge/crossing", {"camera_id": cam, "direction": event, "track_id": tid})
+                api_ok = res is not None
+                if res:
+                    state = res
+                print(f"[CAMERA {cam}] ID {tid} {'VAO' if event == 'in' else 'RA'} cau"
+                      f" -> tren cau: {state.get('onbridge')}")
+
+            if profiler is not None:
+                # Phan tich khach dang di TOI cau (phia ngoai, mat huong ve camera)
+                # va khach vua vao chua chot ho so; bo qua nguoi da o tren cau tu truoc.
+                if profiler.wants(tid) and (not on_bridge_side or event == "in"
+                                            or profiler.label(tid) is not None):
+                    profiler.observe(tid, frame, b, now, kp_xy, kp_conf)
+                lines = profiler.label(tid)
+                if lines:
+                    draw_info_panel(out, b, lines)
+
+        if profiler is not None:
+            profiler.step(now)
 
         if now - last_state_poll >= STATE_POLL_SEC:
             s = _get("/bridge/state")
@@ -325,6 +352,9 @@ def main():
     cap.release()
     cv2.destroyAllWindows()
     print(f"Ket thuc camera {cam}: ghi nhan {local_in} luot vao, {local_out} luot ra.")
+    if profiler is not None:
+        print(f"Ho so nhan khau hoc: {profiler.saved_count} da xac dinh, "
+              f"{profiler.unknown_count} 'Khong xac dinh' (do tin cay < 70%).")
 
 
 if __name__ == "__main__":
