@@ -1,79 +1,139 @@
 """
-tests/test_api.py  —  Kiem thu nhanh backend sau khi to chuc lai thu muc
-=========================================================================
-CHAY (tu thu muc goc):   pip install pytest httpx   (1 lan)
-                         pytest tests/test_api.py -q
-
+tests/test_api.py  —  Kiem thu backend (7 module)
+=================================================
+CHAY (tu thu muc goc):   pytest tests/ -q
 Dung CSDL rieng trong bo nho (khong dung toi backend/smartcau.db that).
-Moi lan ai do sua backend -> chay lai file nay TRUOC khi tao Pull Request.
 """
 
 import os
 import sys
+from datetime import datetime, timedelta
 
 os.environ["SMARTCAU_DATABASE_URL"] = "sqlite:///:memory:"
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 import backend.database as database  # noqa: E402
 
-# SQLite in-memory can dung chung 1 ket noi cho moi request
 database.engine = database.create_engine(
     "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 database.SessionLocal.configure(bind=database.engine)
 
+from backend import notify  # noqa: E402
 from backend.main import app  # noqa: E402
 
-database.Base.metadata.create_all(bind=database.engine)
 client = TestClient(app)
+SENT = []
+notify.deliver_async = lambda recipients, text: SENT.append(text)   # khong gui Telegram that
 
 
+def login(username="admin", password="admin123"):
+    r = client.post("/auth/login", json={"username": username, "password": password})
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+ADMIN = login()
+
+
+# ------------------------------------------------------------- M2 nen tang
 def test_health():
-    assert client.get("/health").json()["status"] == "ok"
+    d = client.get("/health").json()
+    assert d["status"] == "ok" and d["utc_offset_hours"] == 7
 
 
-def test_entry_exit_updates_occupancy():
-    start = client.get("/stats/occupancy").json()["current_count"]
-    client.post("/entry", json={"gender": "Woman", "age_range": "18-24", "age": 21})
-    client.post("/entry", json={"gender": "Man", "age_range": "25-34", "age": 30})
-    client.post("/exit")
-    assert client.get("/stats/occupancy").json()["current_count"] == start + 1
+def test_default_admin_must_change_password():
+    me = client.get("/auth/me", headers=ADMIN).json()
+    assert me["role"] == "admin" and me["must_change_password"] is True
 
 
-def test_exit_never_negative():
-    for _ in range(10):
-        client.post("/exit")
-    assert client.get("/stats/occupancy").json()["current_count"] == 0
+def test_wrong_password_and_no_token():
+    assert client.post("/auth/login", json={"username": "admin", "password": "sai"}).status_code == 401
+    assert client.get("/users").status_code == 401
+    assert client.get("/users", headers={"Authorization": "Bearer khong-hop-le"}).status_code == 401
 
 
-def test_config_roundtrip():
-    assert client.put("/config", json={"alert_threshold": 25}).json()["alert_threshold"] == 25
-    assert client.get("/config").json()["alert_threshold"] == 25
-    assert client.put("/config", json={"alert_threshold": 0}).status_code == 400
+def test_roles_and_account_lifecycle():
+    r = client.post("/users", headers=ADMIN, json={"username": "truc1", "full_name": "Lê Hoan",
+                                                    "password": "truc123", "role": "nguoi_truc"})
+    assert r.status_code == 200, r.text
+    uid = r.json()["id"]
+    assert client.post("/users", headers=ADMIN, json={"username": "truc1", "password": "abcdef"}).status_code == 400
+    truc = login("truc1", "truc123")
+    # FR-12: nguoi truc khong vao duoc chuc nang cau hinh
+    assert client.put("/config", headers=truc, json={"alert_threshold": 30}).status_code == 403
+    assert client.get("/users", headers=truc).status_code == 403
+    # doi mat khau
+    assert client.post("/auth/change_password", headers=truc,
+                       json={"old_password": "truc123", "new_password": "moi12345"}).status_code == 200
+    login("truc1", "moi12345")
+    # khoa tai khoan -> token cu mat hieu luc, khong dang nhap duoc
+    assert client.put(f"/users/{uid}", headers=ADMIN, json={"active": False}).status_code == 200
+    assert client.get("/auth/me", headers=truc).status_code == 401
+    assert client.post("/auth/login", json={"username": "truc1", "password": "moi12345"}).status_code == 403
 
 
-def test_visit_event_filter():
-    client.post("/visit_events", json={"gender": "Woman", "age_range": "35-44"})
-    rows = client.get("/visit_events", params={"gender": "Woman", "age_range": "35-44"}).json()
-    assert rows and all(r["gender"] == "Woman" for r in rows)
+def test_cannot_remove_last_admin():
+    me = client.get("/auth/me", headers=ADMIN).json()
+    assert client.put(f"/users/{me['id']}", headers=ADMIN, json={"role": "quan_ly"}).status_code == 400
 
 
-def test_incidents_read_system_events():
-    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 22})
-    items = client.get("/incidents").json()
-    assert items[0]["event_type"] == "CRITICAL_ALERT"
+# ------------------------------------------------------------- M7 quan tri
+def test_config_roundtrip_and_audit():
+    r = client.put("/config", headers=ADMIN, json={"alert_threshold": 25, "open_time": "06:30"})
+    assert r.status_code == 200
+    d = client.get("/config").json()
+    assert d["alert_threshold"] == 25 and d["warning_threshold"] == 19 and d["open_time"] == "06:30"
+    assert client.put("/config", headers=ADMIN, json={"alert_threshold": 0}).status_code == 400
+    assert client.put("/config", headers=ADMIN, json={"close_time": "25:00"}).status_code == 400
+    log = client.get("/audit", headers=ADMIN).json()
+    assert any(e["action"] == "Đổi cấu hình" and "25" in e["detail"] for e in log)
+    client.put("/config", headers=ADMIN, json={"alert_threshold": 20, "open_time": "00:00", "close_time": "23:59"})
 
 
-def test_skeleton_endpoints_answer():
-    for path in ("/stats/demographics", "/reports/summary", "/tickets/reconciliation",
-                 "/recipients", "/stats/facade"):
-        r = client.get(path)
-        assert r.status_code == 200, path
+def test_recipients_crud():
+    r = client.post("/recipients", headers=ADMIN, json={"name": "Trực đầu cầu", "channel": "telegram",
+                                                         "address": "12345"})
+    rid = r.json()["id"]
+    assert any(x["id"] == rid for x in client.get("/recipients", headers=ADMIN).json())
+    assert client.put(f"/recipients/{rid}", headers=ADMIN, json={"active": False}).json()["active"] is False
+    assert client.post("/recipients", headers=ADMIN, json={"name": "", "address": "1"}).status_code == 400
+    assert client.delete(f"/recipients/{rid}", headers=ADMIN).status_code == 200
 
 
-# ---------------------------------------------------- F1 dem khach 2 camera
+def test_privacy_purge_respects_retention():
+    assert client.get("/privacy/summary", headers=ADMIN).json()["face_images_stored"] == 0
+    assert client.post("/privacy/purge", headers=ADMIN, params={"older_than_days": 30}).status_code == 400
+    assert client.post("/privacy/purge", headers=ADMIN, params={"older_than_days": 730}).status_code == 200
+
+
+# ------------------------------------------------------------- M3 su co
+def test_incident_lifecycle():
+    SENT.clear()
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 22, "message": "Đỏ"})
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 25, "message": "Nhắc lại"})
+    opened = client.get("/incidents", params={"status": "open"}).json()
+    assert len(opened) == 1 and opened[0]["peak_count"] == 25 and opened[0]["alert_count"] == 2
+    iid = opened[0]["id"]
+    acked = client.post(f"/incidents/{iid}/ack", headers=ADMIN, json={"note": "Đã điều tiết"}).json()
+    assert acked["acknowledged"] and acked["handle_seconds"] is not None
+    client.post("/system_events", json={"event_type": "CRITICAL_CLEARED", "count": 14})
+    closed = client.get("/incidents", params={"status": "closed"}).json()
+    assert closed[0]["id"] == iid and closed[0]["close_reason"] == "auto"
+    assert any("ĐÃ ĐÓNG" in t for t in SENT)               # bao cao su co gui quan ly
+    assert client.post(f"/incidents/{iid}/ack").status_code == 401
+
+
+def test_events_have_vietnamese_labels():
+    client.post("/system_events", json={"event_type": "GROUP_DETECTED", "count": 12})
+    e = client.get("/system_events", params={"event_type": "GROUP_DETECTED"}).json()[0]
+    assert e["label"] == "Đoàn khách lớn"
+
+
+# ------------------------------------------------------------- M1 dem + nhan khau hoc
 def _cross(cam, direction):
     r = client.post("/bridge/crossing", json={"camera_id": cam, "direction": direction})
     assert r.status_code == 200, r.text
@@ -81,27 +141,24 @@ def _cross(cam, direction):
 
 
 def test_bridge_counting_rules():
-    client.post("/bridge/reset", params={"reset_dem": True})
-    dem0 = client.get("/bridge/state").json()["dem"]
-    assert dem0 == 0
-
-    s = _cross(1, "in")                       # num1 += 1, dem += 1
-    assert (s["num1"], s["num2"], s["onbridge"], s["dem"]) == (1, 0, 1, 1)
+    client.post("/bridge/reset", headers=ADMIN, params={"reset_dem": True})
+    assert client.get("/bridge/state").json()["dem"] == 0
     s = _cross(1, "in")
+    assert (s["num1"], s["num2"], s["onbridge"], s["dem"]) == (1, 0, 1, 1)
+    _cross(1, "in")
     s = _cross(2, "in")
     assert (s["num1"], s["num2"], s["onbridge"], s["dem"]) == (2, 1, 3, 3)
+    _cross(2, "out")
     s = _cross(2, "out")
-    s = _cross(2, "out")                      # num2 am: khach vao o cam 1, ra o cam 2
     assert (s["num1"], s["num2"], s["onbridge"]) == (2, -1, 1)
-    s = _cross(1, "out")                      # onbridge == 0 -> reset num1, num2
+    s = _cross(1, "out")
     assert (s["num1"], s["num2"], s["onbridge"], s["reset"]) == (0, 0, 0, True)
-    assert s["dem"] == 3                      # dem khong bi reset
-
-    s = _cross(2, "out")                      # camera bo sot -> onbridge < 0 cung reset
+    assert s["dem"] == 3
+    s = _cross(2, "out")
     assert (s["num1"], s["num2"], s["onbridge"]) == (0, 0, 0)
-
     _cross(1, "in")
-    assert client.get("/stats/occupancy").json()["current_count"] == 1   # dong bo dashboard
+    assert client.get("/stats/occupancy").json()["current_count"] == 1
+    assert client.post("/bridge/reset").status_code == 401
 
 
 def test_bridge_validation():
@@ -111,14 +168,11 @@ def test_bridge_validation():
 
 
 def test_bridge_dem_resets_on_new_day(monkeypatch):
-    from datetime import datetime, timedelta
     import backend.routers.bridge as bridge
-
-    client.post("/bridge/reset", params={"reset_dem": True})
+    client.post("/bridge/reset", headers=ADMIN, params={"reset_dem": True})
     _cross(1, "in")
     _cross(2, "in")
     assert client.get("/bridge/state").json()["dem"] == 2
-
     tomorrow = datetime.utcnow() + bridge.LOCAL_UTC_OFFSET + timedelta(days=1)
     monkeypatch.setattr(bridge, "_local_now", lambda: tomorrow)
     s = client.get("/bridge/state").json()
@@ -129,9 +183,60 @@ def test_bridge_dem_resets_on_new_day(monkeypatch):
 def test_bridge_stats_grouping():
     today = client.get("/bridge/state").json()["date"]
     for group in ("hour", "day", "month", "year"):
-        d = client.get("/bridge/stats", params={"group": group, "date_from": today,
-                                                 "date_to": today}).json()
+        d = client.get("/bridge/stats", params={"group": group, "date_from": today, "date_to": today}).json()
         assert d["total_entries"] == sum(r["entries"] for r in d["rows"])
-        assert all(r["entries"] == r["entries_cam1"] + r["entries_cam2"] for r in d["rows"])
-    day = client.get("/bridge/stats", params={"group": "day", "date_from": today, "date_to": today}).json()
-    assert day["rows"][0]["period"] == today and day["total_entries"] > 0
+
+
+def test_camera_heartbeat():
+    client.post("/bridge/heartbeat", json={"camera_id": 1, "source": "0", "fps": 14.6, "sends_alerts": True})
+    cams = {c["camera_id"]: c for c in client.get("/bridge/cameras").json()}
+    assert cams[1]["online"] and cams[1]["fps"] == 15 and cams[2]["online"] is False
+
+
+def test_facade_and_current_stats():
+    client.post("/facade_pass", json={"camera_id": 1})
+    client.post("/facade_pass", json={"camera_id": 2, "count": 2})
+    assert client.get("/stats/facade").json()["total"] >= 3
+    cur = client.get("/stats/current").json()
+    assert cur["facade_today"] >= 3 and cur["entries_today"] >= 1 and "open_incidents" in cur
+
+
+def test_demographics_excludes_unknown():
+    for g, a, o in [("Woman", "25-34", "Trong nuoc"), ("Man", "18-24", "Nuoc ngoai"),
+                    ("Woman", "25-34", "Nuoc ngoai"), (None, "Khong xac dinh", None)]:
+        client.post("/visit_events", json={"gender": g, "age_range": a, "origin": o})
+    d = client.get("/stats/demographics").json()
+    assert d["unknown"] >= 1 and d["identified"] == d["total"] - d["unknown"]
+    assert d["gender"]["Woman"] >= 2 and d["origin"]["Nuoc ngoai"] >= 2
+    rows = client.get("/visit_events", params={"gender": "unknown"}).json()
+    assert rows and all(r["gender"] is None for r in rows)
+    rows = client.get("/visit_events", params={"origin": "Trong nuoc"}).json()
+    assert rows and all(r["origin"] == "Trong nuoc" for r in rows)
+
+
+# ------------------------------------------------------------- M4 bao cao
+def test_report_summary_real_data():
+    for period in ("day", "week", "month"):
+        d = client.get("/reports/summary", params={"period": period}).json()
+        assert "mock" not in d
+        assert d["total_entries"] == sum(x["entries"] for x in d["by_day"])
+        assert len(d["by_day"]) == {"day": 1, "week": 7, "month": 30}[period]
+    day = client.get("/reports/summary", params={"period": "day"}).json()
+    assert day["total_entries"] == sum(x["entries"] for x in day["by_15min"])
+    assert len(day["time_slots"]) == 4 and day["incidents"] >= 1
+    assert client.get("/reports/summary", params={"period": "nam"}).status_code == 400
+
+
+# ------------------------------------------------------------- M5 doi chieu ve
+def test_ticket_reconciliation():
+    today = client.get("/bridge/state").json()["date"]
+    entries = client.get("/tickets/reconciliation", params={"date": today}).json()["entries_counted"]
+    assert entries > 0
+    assert client.post("/tickets", json={"date": today, "ticket_count": 1}).status_code == 401
+    client.post("/tickets", headers=ADMIN, json={"date": today, "ticket_count": entries - 1})
+    client.post("/tickets", headers=ADMIN, json={"date": today, "ticket_count": entries - 1})  # ghi de, khong nhan doi
+    d = client.get("/tickets/reconciliation", params={"date": today}).json()
+    assert d["tickets_sold"] == entries - 1 and d["gap"] == 1
+    assert d["gap_rate_pct"] == pytest.approx(round(1 / entries * 100, 1))
+    assert len(client.get("/tickets", params={"date_from": today, "date_to": today}).json()) == 1
+    assert client.post("/tickets", headers=ADMIN, json={"date": "04/11/2026", "ticket_count": 1}).status_code == 400

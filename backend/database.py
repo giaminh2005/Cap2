@@ -35,3 +35,23 @@ def get_db():
         yield db
     finally:
         db.close()
+
+
+def ensure_schema(bind=None):
+    """Tao bang con thieu VA bo sung cot moi vao bang da co (SQLite khong tu
+    lam viec nay khi nang cap code) -> file smartcau.db cu van chay duoc."""
+    from sqlalchemy import inspect, text
+
+    bind = bind or engine
+    Base.metadata.create_all(bind=bind)
+    insp = inspect(bind)
+    with bind.begin() as conn:
+        for table in Base.metadata.sorted_tables:
+            if not insp.has_table(table.name):
+                continue
+            existing = {c["name"] for c in insp.get_columns(table.name)}
+            for col in table.columns:
+                if col.name in existing:
+                    continue
+                coltype = col.type.compile(dialect=bind.dialect)
+                conn.execute(text(f'ALTER TABLE "{table.name}" ADD COLUMN "{col.name}" {coltype}'))

@@ -1,81 +1,119 @@
 """
 backend/models.py  (MODULE M2 - Nen tang backend, phu trach: Minh)
 --------------------------------------------------------------------
-Cac bang CSDL LOI da co tu api_server.py cu (giu nguyen ten bang/cot de
-du lieu cu van doc duoc). Day la nguon cho ERD/Data Dictionary Sprint 3.
+Cac bang CSDL LOI dung chung nhieu module. Bang rieng cua 1 module khai bao
+ngay trong file router cua module do (vd bang ve tham quan nam trong
+routers/tickets.py) de 3 nguoi khong cung sua 1 file -> tranh xung dot.
 
-QUY UOC LAM VIEC SONG SONG: bang MOI cua module nao thi khai bao NGAY
-TRONG file router cua module do (vd bang ve tham quan nam trong
-routers/tickets.py) de 3 nguoi khong cung sua 1 file nay -> khong bi
-xung dot (merge conflict) tren GitHub. File nay chi Minh sua.
+Cot moi them vao bang cu duoc tu dong bo sung khi khoi dong
+(database.ensure_schema) nen file smartcau.db cu van dung duoc.
 """
 
 from datetime import datetime
 
-from sqlalchemy import Column, DateTime, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Integer, String
 
 from .database import Base
 
 
 class VisitEvent(Base):
-    """F1.3 + F3.2 - 1 dong = 1 ho so nhan khau hoc cua 1 luot khach VAO.
-    Khong luu anh khuon mat, khong luu khu vuc/quoc tich theo ca nhan
-    (US-12 / PB-06: cam ket quyen rieng tu)."""
+    """F3.2 - 1 dong = nhan nhan khau hoc cua 1 luot khach VAO cau.
+    Khong luu anh, khong luu dac trung khuon mat (BRULE-05, NFR-05).
+    gender = None / age_range = "Khong xac dinh" khi do tin cay < 70% (BRULE-06).
+    origin = "Trong nuoc" / "Nuoc ngoai" / None - UOC LUONG tu nhom khu vuc rong."""
     __tablename__ = "visit_events"
     id = Column(Integer, primary_key=True, index=True)
     track_id = Column(Integer, index=True, nullable=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     age = Column(Integer, nullable=True)
     age_range = Column(String, nullable=True)
     gender = Column(String, nullable=True)
+    origin = Column(String, nullable=True)
+    camera_id = Column(Integer, nullable=True)
 
 
 class OccupancySnapshot(Base):
-    """F1.2 / F5.1 - so nguoi tren cau duoc camera bao cao dinh ky (de ve
-    bieu do lich su)."""
+    """F1.2 / F5.1 - so nguoi tren cau + muc canh bao, camera gui moi 2 giay."""
     __tablename__ = "occupancy_snapshots"
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     count = Column(Integer)
     status = Column(String)
 
 
 class OccupancyState(Base):
-    """F1.2 - CHI 1 dong (id=1): so nguoi dang tren cau thoi gian thuc,
-    camera VAO +1, camera RA -1."""
+    """F1.2 - CHI 1 dong (id=1): so nguoi dang tren cau thoi gian thuc."""
     __tablename__ = "occupancy_state"
     id = Column(Integer, primary_key=True)
     current_count = Column(Integer, default=0)
 
 
 class SystemEvent(Base):
-    """F2 - nhat ky su kien: canh bao Vang/Do, dong/mo cong, doan khach lon...
-    event_type vi du: "WARNING", "CRITICAL_ALERT", "GATE_CLOSED",
-    "GATE_REOPENED", "GROUP_DETECTED", "CAMERA_LOST"."""
+    """F2 - nhat ky su kien: WARNING, CRITICAL_ALERT, CRITICAL_CLEARED,
+    GROUP_DETECTED, CAMERA_LOST, CAMERA_RESTORED, GATE_CLOSED, GATE_REOPENED."""
     __tablename__ = "system_events"
     id = Column(Integer, primary_key=True, index=True)
-    timestamp = Column(DateTime, default=datetime.utcnow)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
     event_type = Column(String, index=True)
     count = Column(Integer, nullable=True)
     message = Column(String, nullable=True)
+    camera_id = Column(Integer, nullable=True)
 
 
 class RegionStat(Base):
     """F3.3 - thong ke TONG HOP theo (ngay, gio, khu vuc), khong gan ca nhan."""
     __tablename__ = "region_stats"
     id = Column(Integer, primary_key=True, index=True)
-    date = Column(String, index=True)   # "YYYY-MM-DD"
-    hour = Column(Integer, index=True)  # 0-23
+    date = Column(String, index=True)
+    hour = Column(Integer, index=True)
     region = Column(String, index=True)
     count = Column(Integer, default=0)
 
 
 class SystemConfig(Base):
-    """F6.2 - CHI 1 dong (id=1): nguong canh bao doi tu xa qua trang admin."""
+    """F6.2 - CHI 1 dong (id=1): nguong canh bao + khung gio hoat dong (FR-13)."""
     __tablename__ = "system_config"
     id = Column(Integer, primary_key=True)
     alert_threshold = Column(Integer, default=20)
+    open_time = Column(String, default="07:00")
+    close_time = Column(String, default="21:30")
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_by = Column(String, nullable=True)
+
+
+class User(Base):
+    """F6.1 - tai khoan dang nhap. role: admin | quan_ly | nguoi_truc (FR-12)."""
+    __tablename__ = "users"
+    id = Column(Integer, primary_key=True)
+    username = Column(String, unique=True, index=True)
+    full_name = Column(String, default="")
+    password_hash = Column(String)
+    role = Column(String, default="nguoi_truc")
+    active = Column(Boolean, default=True)
+    must_change_password = Column(Boolean, default=False)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    last_login = Column(DateTime, nullable=True)
+
+
+class AuthToken(Base):
+    __tablename__ = "auth_tokens"
+    token = Column(String, primary_key=True)
+    user_id = Column(Integer, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow)
+    expires_at = Column(DateTime)
+
+
+class AuditLog(Base):
+    """NFR-04 / BRULE-07 - moi thay doi cau hinh, tai khoan, nguoi nhan deu ghi lai."""
+    __tablename__ = "audit_log"
+    id = Column(Integer, primary_key=True)
+    timestamp = Column(DateTime, default=datetime.utcnow, index=True)
+    username = Column(String)
+    action = Column(String)
+    detail = Column(String, default="")
+
+
+ROLES = {"admin": "Quản trị viên", "quan_ly": "Quản lý", "nguoi_truc": "Người trực"}
 
 
 def get_state(db) -> OccupancyState:
@@ -91,8 +129,16 @@ def get_state(db) -> OccupancyState:
 def get_config(db) -> SystemConfig:
     cfg = db.query(SystemConfig).filter(SystemConfig.id == 1).first()
     if cfg is None:
-        cfg = SystemConfig(id=1, alert_threshold=20)
+        cfg = SystemConfig(id=1, alert_threshold=20, open_time="07:00", close_time="21:30")
         db.add(cfg)
         db.commit()
         db.refresh(cfg)
+    if cfg.open_time is None or cfg.close_time is None:
+        cfg.open_time = cfg.open_time or "07:00"
+        cfg.close_time = cfg.close_time or "21:30"
+        db.commit()
     return cfg
+
+
+def log_audit(db, username: str, action: str, detail: str = ""):
+    db.add(AuditLog(username=username or "?", action=action, detail=detail))

@@ -1,76 +1,182 @@
 """
 backend/routers/alerts.py  —  MODULE M3 · F2 Dieu tiet qua tai
 ===============================================================
-Chuc nang BFD: F2.1 - F2.4   (FR-04, FR-05, FR-06, FR-07)
+Chuc nang BFD: F2.1 - F2.4   (FR-04, FR-05, FR-06, FR-07, BRULE-04)
+Phu trach: MINH (F2.1-F2.3), HOAN (F2.4).
 
-Phan DA CHAY (Minh - chuyen nguyen tu api_server.py cu):
-    POST /system_events    camera ghi su kien (canh bao Vang/Do, dong cong...)
-    GET  /system_events    danh sach su kien gan nhat
+    POST /system_events            camera ghi su kien -> backend gui thong bao + mo/dong su co
+    GET  /system_events            nhat ky su kien
+    GET  /incidents?status=        su co Do (open | closed | all)
+    POST /incidents/{id}/ack       nguoi truc xac nhan "da xu ly" (1 cham, AC-04.1)
+    POST /incidents/{id}/close     dong su co bang tay (vd camera mat tin hieu)
 
-Phan SKELETON - phu trach: HOAN (PB-08 xac nhan xu ly su co, F2.4):
-    GET  /incidents                 danh sach su co (canh bao) + trang thai xu ly
-    POST /incidents/{id}/ack        nguoi truc xac nhan "da xu ly" (<= 2 thao tac)
-
-    TODO(Hoan, Sprint 4):
-      1. Them bang IncidentAck ngay trong file nay (event_id, acked_by,
-         acked_at, note) - KHONG sua backend/models.py.
-      2. /incidents: ghep system_events voi IncidentAck de biet su co nao
-         da xu ly, tinh "thoi gian xu ly" = acked_at - timestamp (KPI O4).
-      3. Tu dong dong su co khi <= 15 nguoi lien tuc 15 giay (BRULE) - co
-         the do camera gui event "GATE_REOPENED", chi can danh dau dong.
+Vong doi su co (FR-07):
+    CRITICAL_ALERT (lan dau)  -> MO su co moi, gui tin Do
+    CRITICAL_ALERT (nhac lai) -> cap nhat so nguoi cao nhat, gui tin nhac (camera da gioi han 3 phut)
+    CRITICAL_CLEARED          -> TU DONG DONG su co (<= 15 nguoi lien tuc 15 giay),
+                                 gui bao cao su co cho quan ly (AC-04.2)
 """
 
-from fastapi import APIRouter, Depends
+from datetime import datetime
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import Session
 
-from ..database import get_db
-from ..models import SystemEvent
+from .. import notify
+from ..database import Base, get_db
+from ..models import SystemEvent, get_config
 from ..schemas import SystemEventIn
-from ..security import require_api_key
+from ..security import Principal, require_api_key, require_staff
+from ..timeutil import iso, to_local
+from .admin import active_recipients, is_open_now
 
 router = APIRouter(tags=["F2 - Dieu tiet qua tai"])
 
-ALERT_TYPES = ("WARNING", "CRITICAL_ALERT", "GATE_CLOSED", "GROUP_DETECTED", "CAMERA_LOST")
+EVENT_LABELS = {
+    "WARNING": "Cảnh báo Vàng",
+    "CRITICAL_ALERT": "Cảnh báo Đỏ",
+    "CRITICAL_CLEARED": "Hết quá tải",
+    "GROUP_DETECTED": "Đoàn khách lớn",
+    "CAMERA_LOST": "Mất tín hiệu camera",
+    "CAMERA_RESTORED": "Camera hoạt động lại",
+    "GATE_CLOSED": "Tạm dừng cho khách lên",
+    "GATE_REOPENED": "Cho khách lên lại",
+}
+ALWAYS_NOTIFY = {"CRITICAL_ALERT", "CAMERA_LOST"}          # gui ca ngoai gio mo cua
+NOTIFY_IN_HOURS = {"WARNING", "GROUP_DETECTED", "CAMERA_RESTORED"}
+
+
+class Incident(Base):
+    """F2.4 - 1 dong = 1 su co qua tai (canh bao Do)."""
+    __tablename__ = "incidents"
+    id = Column(Integer, primary_key=True)
+    opened_at = Column(DateTime, default=datetime.utcnow, index=True)
+    peak_count = Column(Integer, default=0)
+    alert_count = Column(Integer, default=1)
+    acked_at = Column(DateTime, nullable=True)
+    acked_by = Column(String, nullable=True)
+    note = Column(String, nullable=True)
+    closed_at = Column(DateTime, nullable=True)
+    close_reason = Column(String, nullable=True)   # "auto" | "manual"
+    closed_by = Column(String, nullable=True)
+
+
+def _open_incident(db) -> Optional[Incident]:
+    return db.query(Incident).filter(Incident.closed_at.is_(None)).order_by(Incident.id.desc()).first()
+
+
+def _secs(a, b):
+    return int((b - a).total_seconds()) if a and b else None
+
+
+def _incident_json(i: Incident) -> dict:
+    return {"id": i.id, "opened_at": iso(i.opened_at), "peak_count": i.peak_count,
+            "alert_count": i.alert_count, "acknowledged": i.acked_at is not None,
+            "acked_at": iso(i.acked_at), "acked_by": i.acked_by, "note": i.note,
+            "closed_at": iso(i.closed_at), "close_reason": i.close_reason, "closed_by": i.closed_by,
+            "status": "open" if i.closed_at is None else "closed",
+            "handle_seconds": _secs(i.opened_at, i.acked_at),
+            "duration_seconds": _secs(i.opened_at, i.closed_at or datetime.utcnow())}
+
+
+def _close(db, inc: Incident, reason: str, by: str):
+    inc.closed_at = datetime.utcnow()
+    inc.close_reason, inc.closed_by = reason, by
+    dur = _secs(inc.opened_at, inc.closed_at) or 0
+    handled = (f"xác nhận bởi {inc.acked_by} sau {_secs(inc.opened_at, inc.acked_at)} giây"
+               if inc.acked_at else "chưa có người xác nhận")
+    return (f"[SmartCau AI] SỰ CỐ #{inc.id} ĐÃ ĐÓNG ({'tự động' if reason == 'auto' else 'thủ công bởi ' + by}). "
+            f"Bắt đầu {to_local(inc.opened_at):%H:%M %d/%m}, kéo dài {dur // 60} phút {dur % 60} giây, "
+            f"cao nhất {inc.peak_count} người, {handled}.")
 
 
 @router.post("/system_events", dependencies=[Depends(require_api_key)])
 def create_system_event(event: SystemEventIn, db: Session = Depends(get_db)):
-    row = SystemEvent(event_type=event.event_type, count=event.count, message=event.message)
+    row = SystemEvent(event_type=event.event_type, count=event.count, message=event.message,
+                      camera_id=event.camera_id)
     db.add(row)
+    text = event.message or f"[SmartCau AI] {EVENT_LABELS.get(event.event_type, event.event_type)}"
+    incident_id = None
+
+    if event.event_type == "CRITICAL_ALERT":
+        inc = _open_incident(db)
+        if inc is None:
+            inc = Incident(peak_count=event.count or 0)
+            db.add(inc)
+        else:
+            inc.alert_count += 1
+            inc.peak_count = max(inc.peak_count or 0, event.count or 0)
+        db.flush()
+        incident_id = inc.id
+        text = f"{text} (Sự cố #{inc.id})"
+    elif event.event_type == "CRITICAL_CLEARED":
+        inc = _open_incident(db)
+        if inc is not None:
+            text = _close(db, inc, "auto", "hệ thống")
+            incident_id = inc.id
     db.commit()
-    db.refresh(row)
-    return {"saved": True, "id": row.id}
+
+    send = event.event_type in ALWAYS_NOTIFY or (
+        event.event_type in NOTIFY_IN_HOURS and is_open_now(get_config(db)))
+    if event.event_type == "CRITICAL_CLEARED" and incident_id is not None:
+        send = True
+    if send:
+        notify.deliver_async(active_recipients(db), text)
+    return {"saved": True, "id": row.id, "incident_id": incident_id, "notified": send}
 
 
 @router.get("/system_events")
-def list_system_events(limit: int = 50, db: Session = Depends(get_db)):
-    rows = db.query(SystemEvent).order_by(SystemEvent.id.desc()).limit(limit).all()
-    return [
-        {"id": r.id, "timestamp": r.timestamp.isoformat(), "event_type": r.event_type,
-         "count": r.count, "message": r.message}
-        for r in rows
-    ]
+def list_system_events(limit: int = 50, event_type: Optional[str] = None, db: Session = Depends(get_db)):
+    q = db.query(SystemEvent)
+    if event_type:
+        q = q.filter(SystemEvent.event_type == event_type)
+    rows = q.order_by(SystemEvent.id.desc()).limit(limit).all()
+    return [{"id": r.id, "timestamp": iso(r.timestamp), "event_type": r.event_type,
+             "label": EVENT_LABELS.get(r.event_type, r.event_type), "count": r.count,
+             "message": r.message, "camera_id": r.camera_id} for r in rows]
 
 
-# ------------------------------------------------------------- SKELETON F2.4
 @router.get("/incidents")
-def list_incidents(limit: int = 50, db: Session = Depends(get_db)):
-    """Doc su co THAT tu system_events; cac truong xu ly (acknowledged,
-    acked_at, handle_seconds) tam thoi de trong cho den khi Hoan them bang
-    IncidentAck. Cau truc JSON da chot trong docs/API_CONTRACT.md."""
-    rows = (db.query(SystemEvent)
-            .filter(SystemEvent.event_type.in_(ALERT_TYPES))
-            .order_by(SystemEvent.id.desc()).limit(limit).all())
-    return [
-        {"id": r.id, "timestamp": r.timestamp.isoformat(), "event_type": r.event_type,
-         "count": r.count, "message": r.message,
-         "acknowledged": False, "acked_at": None, "acked_by": None, "handle_seconds": None,
-         "mock_fields": ["acknowledged", "acked_at", "acked_by", "handle_seconds"]}
-        for r in rows
-    ]
+def list_incidents(status: str = "all", limit: int = 100, db: Session = Depends(get_db)):
+    q = db.query(Incident)
+    if status == "open":
+        q = q.filter(Incident.closed_at.is_(None))
+    elif status == "closed":
+        q = q.filter(Incident.closed_at.isnot(None))
+    return [_incident_json(i) for i in q.order_by(Incident.id.desc()).limit(limit).all()]
 
 
-@router.post("/incidents/{event_id}/ack")
-def ack_incident(event_id: int, acked_by: str = "nguoi_truc", note: str = ""):
-    return {"event_id": event_id, "acknowledged": True, "acked_by": acked_by,
-            "note": note, "mock": True, "detail": "Chua luu that - F2.4 (PB-08)"}
+class AckIn(BaseModel):
+    note: str = ""
+
+
+@router.post("/incidents/{incident_id}/ack")
+def ack_incident(incident_id: int, payload: AckIn = AckIn(), p: Principal = Depends(require_staff),
+                 db: Session = Depends(get_db)):
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if inc is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sự cố.")
+    if inc.acked_at is None:
+        inc.acked_at = datetime.utcnow()
+        inc.acked_by = p.display
+    if payload.note:
+        inc.note = payload.note
+    db.commit()
+    db.refresh(inc)
+    return _incident_json(inc)
+
+
+@router.post("/incidents/{incident_id}/close")
+def close_incident(incident_id: int, p: Principal = Depends(require_staff), db: Session = Depends(get_db)):
+    inc = db.query(Incident).filter(Incident.id == incident_id).first()
+    if inc is None:
+        raise HTTPException(status_code=404, detail="Không tìm thấy sự cố.")
+    if inc.closed_at is None:
+        text = _close(db, inc, "manual", p.display)
+        db.commit()
+        notify.deliver_async(active_recipients(db), text)
+    db.refresh(inc)
+    return _incident_json(inc)
