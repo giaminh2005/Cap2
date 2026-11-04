@@ -204,6 +204,22 @@ class TemporalVoter:
         winner, confidence, _ = _weighted_tally(st.votes)
         return winner, confidence, len(st.votes)
 
+    def _current_share(self, track_id: int, label: str) -> float:
+        """SUA LOI LAN 7: ty le phieu (0..1) cua 1 nhan CU THE (vd gioi
+        tinh da "chot" truoc do) TRONG CUA SO phieu HIEN TAI - dung de so
+        sanh CONG BANG voi nhan moi dang thang, xem giai thich "SUA LOI LAN
+        7" trong docstring dau file."""
+        st = self._state(track_id)
+        if not st.votes:
+            return 0.0
+        totals: Dict[str, float] = {}
+        for g, w in st.votes:
+            totals[g] = totals.get(g, 0.0) + w
+        total_weight = sum(totals.values())
+        if total_weight <= 0:
+            return 0.0
+        return totals.get(label, 0.0) / total_weight
+
     def _tally_age(self, track_id: int) -> Tuple[str, Optional[int]]:
         """SUA LOI LAN 5: khoang tuoi "thang" (bau nhieu nhat) trong
         age_votes hien co, cung voi 1 tuoi so le THAM KHAO (trung binh cac
@@ -234,7 +250,22 @@ class TemporalVoter:
             elif winner != st.locked_gender:
                 # SMOOTHING: chi doi "chot" khi ket qua moi thang DAM voi
                 # bien do >= _FLIP_MARGIN, tranh nhay gioi tinh lien tuc.
-                if confidence - st.locked_confidence >= _FLIP_MARGIN:
+                #
+                # SUA LOI LAN 7 (nguoi dung phat hien qua test thuc te: 1
+                # khi da "chot" voi do tin cay = 1.0 (vd 3/3 phieu dau tien
+                # DONG THUAN), thi KHONG BAO GIO doi duoc nua, du sau do co
+                # 100% phieu moi deu dung) - truoc day so sanh confidence
+                # (toi da = 1.0) voi st.locked_confidence (cung co the da la
+                # 1.0 tu luc chot) -> hieu so toi da = 0, khong bao gio >=
+                # _FLIP_MARGIN (0.15) duoc, "tran" vinh vien o do tin cay
+                # 1.0 ban dau. Sua: so sanh do tin cay nhan MOI voi ty le
+                # phieu CUA CHINH nhan DA CHOT (locked_gender) TRONG CUNG 1
+                # cua so phieu HIEN TAI (_current_share), khong con dung con
+                # so CU da luu tu luc chot nua - 2 so nay luon cung "mat
+                # thang do" (cung 1 cua so, cung thoi diem) nen so sanh cong
+                # bang, khong con bi tran som.
+                locked_share_now = self._current_share(track_id, st.locked_gender)
+                if confidence - locked_share_now >= _FLIP_MARGIN:
                     st.locked_gender, st.locked_confidence = winner, confidence
             else:
                 st.locked_confidence = confidence
