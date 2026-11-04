@@ -7,7 +7,7 @@ CAMERA VAO (dat o dau cau) - phien ban NANG CAP (Phase 1 + 2 + 3 + 4):
     camera_out.py). Dung model POSE (khong phai model detect thuong) de
     co THEM toa do khop xuong (keypoints) lam tin hieu phu cho Demographics
     Engine (xem demographics_engine.py).
-  - Voi moi nguoi MOI xuat hien: phan tich khoang tuoi + gioi tinh qua
+  - Voi moi nguoi MOI xuat hien: phan tich khoang tuoi + gioi tinh + trong/ngoai nuoc qua
     DemographicsEngine (gop DeepFace + ty le vai/hong + bo phieu theo
     thoi gian - Phase 2), CHI luu HO SO khi ket qua da "san sang" (do tin
     cay >= 70%) - luu MOT LAN duy nhat (POST /entry).
@@ -208,7 +208,7 @@ def main():
     # qua la gi, nen chi hien duoc "(da ghi nhan)" chung chung. Sua: them
     # dict nho lai gioi tinh/tuoi cho tung track_id NGAY luc "chot" ket
     # qua, de cac frame sau van hien TIEP TUC dung thong tin do.
-    saved_info = {}            # track_id -> {"gender":.., "age_range":..}
+    saved_info = {}            # track_id -> {"gender":.., "age_range":.., "nationality":..}
     region_logged_ids = set() # track_id da ghi thong ke khu vuc tong hop roi (tranh dem lap)
     shared_count = 0          # so nguoi dang co mat, lay tu server
     last_poll_time = 0.0
@@ -259,12 +259,21 @@ def main():
 
                 if info["ready"]:
                     saved_ids.add(tid)
-                    saved_info[tid] = {"gender": info["gender"], "age_range": info["age_range"]}
+                    
+                    # Lay nationality (mac dinh la Unknown neu engine.update chua tra ve)
+                    nat_val = info.get("nationality", "Unknown")
+                    
+                    saved_info[tid] = {
+                        "gender": info["gender"], 
+                        "age_range": info["age_range"],
+                        "nationality": nat_val
+                    }
                     entry_payload = {
                         "track_id": tid,
-                        "age": info["age"],
+                        "age": info.get("age", -1),
                         "age_range": info["age_range"],
                         "gender": info["gender"],
+                        "nationality": nat_val # Them vao database
                     }
                     if SOLO_DEMO:
                         # Luu ho so vao backend nhung KHONG cong vao occupancy_state
@@ -272,12 +281,17 @@ def main():
                         post_visit_event(entry_payload)
                     else:
                         post_entry(entry_payload)
+                        
                     if ENABLE_REGION and info.get("region") and info.get("region_confidence", 0) >= 0.5:
                         if tid not in region_logged_ids:
                             region_logged_ids.add(tid)
                             post_region_stat(info["region"])
-                    label = [f"VAO - ID {tid}", info["gender"], info["age_range"]]
-                    draw_info_panel(out, box, label)
+                            
+                    gender_display = "Nữ" if info["gender"] == "Woman" else "Nam"
+                    label = [f"VAO - ID {tid}", f"{gender_display}, {nat_val}", info["age_range"]]
+                    
+                    box_color = (255, 150, 0) if nat_val == "Quoc Te" else (255, 0, 255)
+                    draw_info_panel(out, box, label, color=box_color)
                 else:
                     cv2.putText(out, f"ID {tid} (dang xac dinh... {info['n_votes']}/3)",
                                 (box[0], max(0, box[1] - 8)),
@@ -285,7 +299,11 @@ def main():
             else:
                 info = saved_info.get(tid)
                 if info:
-                    draw_info_panel(out, box, [f"ID {tid}", info["gender"], info["age_range"]])
+                    gender_display = "Nữ" if info["gender"] == "Woman" else "Nam"
+                    nat_val = info.get("nationality", "Unknown")
+                    label = [f"ID {tid}", f"{gender_display}, {nat_val}", info["age_range"]]
+                    box_color = (255, 150, 0) if nat_val == "Quoc Te" else (255, 0, 255)
+                    draw_info_panel(out, box, label, color=box_color)
                 else:
                     # Phong hy huu: tid nam trong saved_ids nhung khong co trong
                     # saved_info (vd du lieu cu tu phien chay truoc) - van hien

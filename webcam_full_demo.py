@@ -23,7 +23,7 @@ def run_full_analysis(counter, frame):
     
     if boxes and DEEPFACE_OK:
         for box in boxes:
-            res = estimate_demographics_from_person_box(frame, box)
+            res = estimate_demographics_from_person_box(frame, box, include_race=True)
             faces_results.append(res)
     else:
         faces_results = [{} for _ in boxes] if boxes else []
@@ -71,11 +71,20 @@ def main():
                 continue
                 
             gender_display = "Nữ" if face_info["gender"] == "Woman" else "Nam"
-            lines = [f"Nguoi #{idx + 1}", f"{gender_display}", f"Khoang {face_info.get('age_range', 'Khong ro')}"]
-            draw_info_panel(out, box, lines)
+            nat_display = face_info.get("nationality", "Unknown")
+            lines = [
+                f"Nguoi #{idx + 1}", 
+                f"{gender_display}, {nat_display}", 
+                f"Khoang {face_info.get('age_range', 'Khong ro')}"
+            ]
+            
+            # Đổi màu hiển thị để dễ nhận diện: Khách Quốc tế -> Xanh dương, Khách trong nước -> Tím hồng
+            box_color = (255, 150, 0) if nat_display == "Quoc Te" else (255, 0, 255)
+            
+            draw_info_panel(out, box, lines, color=box_color)
             shown += 1
 
-        cv2.imshow("SmartCau AI - Dem nguoi + Nhan khau hoc (nhan 'q' de thoat)", out)
+        cv2.imshow("SmartCau AI - Dem nguoi + Nhan khau hoc", out)
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 

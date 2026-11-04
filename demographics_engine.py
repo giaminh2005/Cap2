@@ -153,6 +153,10 @@ class _TrackState:
     age_votes: Deque[Tuple[str, float, Optional[int]]] = field(
         default_factory=lambda: deque(maxlen=VOTE_WINDOW)
     )
+    # BỔ SUNG QUỐC TỊCH: Lưu phiếu bầu quốc tịch để không bị vứt kết quả
+    nationality_votes: Deque[Tuple[str, float]] = field(
+        default_factory=lambda: deque(maxlen=VOTE_WINDOW)
+    )
     age: Optional[int] = None
     age_range: str = "Khong ro"
     region: Optional[str] = None
@@ -189,6 +193,13 @@ class TemporalVoter:
             return
         weight = max(0.0, min(1.0, weight)) or 1.0
         self._state(track_id).age_votes.append((age_range, weight, age))
+
+    # HÀM MỚI: Bầu phiếu quốc tịch
+    def add_nationality_vote(self, track_id: int, nationality: str, weight: float = 1.0):
+        if not nationality or nationality == "Unknown":
+            return
+        weight = max(0.0, min(1.0, weight)) or 1.0
+        self._state(track_id).nationality_votes.append((nationality, weight))
 
     def set_region(self, track_id: int, region: Optional[str], confidence: float):
         st = self._state(track_id)
@@ -235,11 +246,19 @@ class TemporalVoter:
         avg_age = round(sum(matching_raw) / len(matching_raw)) if matching_raw else None
         return winner, avg_age
 
+    # HÀM MỚI: Tally quốc tịch
+    def _tally_nationality(self, track_id: int) -> str:
+        st = self._state(track_id)
+        if not st.nationality_votes:
+            return "Unknown"
+        winner, _, _ = _weighted_tally(st.nationality_votes)
+        return winner if winner else "Unknown"
+
     def result(self, track_id: int) -> Dict:
         """Tra ve ket qua CUOI CUNG cho track_id nay, da ap dung SMOOTHING
         (khong doi gioi tinh da "chot" tru khi phieu moi nghieng han hon).
         Dict: {"gender", "confidence", "ready", "age", "age_range",
-               "region", "region_confidence", "n_votes"}."""
+               "region", "region_confidence", "nationality", "n_votes"}."""
         st = self._state(track_id)
         winner, confidence, n_votes = self.tally(track_id)
 
@@ -272,6 +291,7 @@ class TemporalVoter:
             ready = st.locked_gender is not None
 
         age_range, age = self._tally_age(track_id)
+        nationality = self._tally_nationality(track_id)
 
         return {
             "gender": st.locked_gender,
@@ -279,6 +299,7 @@ class TemporalVoter:
             "ready": ready,
             "age": age,
             "age_range": age_range,
+            "nationality": nationality, # Thêm quốc tịch vào kết quả
             "region": st.region,
             "region_confidence": round(st.region_confidence, 2),
             "n_votes": n_votes,
@@ -315,7 +336,8 @@ class DemographicsEngine:
         """Goi 1 LAN MOI FRAME cho moi track_id dang theo doi (co the goi
         lai nhieu lan cho CUNG 1 track_id - ham se tu bo phieu don dan,
         KHONG can tu quan ly cache ben ngoai nhu ban cu)."""
-        info = estimate_demographics_from_person_box(frame, box, include_race=self.enable_region)
+        # Lưu ý: Truyền enable_region vào include_race ở đây đã được thay bằng True bên trong age_gender_estimator
+        info = estimate_demographics_from_person_box(frame, box, include_race=True)
 
         if info["gender"] is not None:
             # DeepFace tra ve gender_confidence theo thang 0-100 -> doi ve 0-1
@@ -328,6 +350,10 @@ class DemographicsEngine:
                 # cua frame do cung duoc tin hon, hop ly vi ca 2 cung doc
                 # tu CUNG 1 lan phan tich/1 vung mat.
                 self.voter.add_age_vote(track_id, info["age_range"], info["age"], weight=df_conf)
+
+            # Cập nhật phiếu bầu Quốc tịch
+            if "nationality" in info:
+                self.voter.add_nationality_vote(track_id, info["nationality"], weight=df_conf)
 
             if self.enable_region:
                 region, region_conf = classify_region_from_deepface_race(info.get("race_probs"))
