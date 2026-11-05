@@ -60,7 +60,7 @@ def live():
             kpi("Đầy cầu sau", "–" if to_full is None else f"{to_full:.0f}<small> phút</small>",
                 "nếu giữ tốc độ hiện tại" if to_full is not None else "khách không tăng",
                 "warn" if to_full is not None and to_full <= 10 else ""),
-            kpi("Thời gian chờ", lv["wait_label"] or "Không chờ", "FR-17 · khi cầu đầy",
+            kpi("Thời gian chờ", lv["wait_label"] or "Không chờ", "khi cầu đầy",
                 "danger" if lv["wait_label"] else "ok"),
         ])
     st.caption(("Chưa nhận được mức cảnh báo từ camera chân cầu 1 trong 30 giây qua." if cur["status_stale"] else
@@ -152,8 +152,6 @@ def outlook():
                               annotation_text="bây giờ", annotation_font_color=C["muted"])
             fig.update_xaxes(dtick=1, ticksuffix="h")
             st.plotly_chart(style_fig(fig, 300), width="stretch", key="fc")
-            st.caption("Dự báo = trung bình cùng thứ, cùng giờ các tuần trước × mức đông của hôm nay so với ngày thường. "
-                       "Chỉ dùng để chuẩn bị nhân sự điều tiết.")
     with c2:
         section("Nhận định tự động")
         insight_list(ins["items"])

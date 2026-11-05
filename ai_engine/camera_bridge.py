@@ -12,14 +12,17 @@ Server tinh onbridge = num1 + num2 (xem backend/routers/bridge.py).
 Them:
   - Nguoi chi di ngang phia ngoai, khong qua vach -> 1 luot mat tien (F1.4)
   - Doan >= 10 nguoi cung di toi cau trong 10 giay -> canh bao doan khach (F3.1)
-  - --demographics: hien Nam/Nu, khoang tuoi, Trong nuoc/Nuoc ngoai canh
-    khung nguoi va luu cho khach VAO cau (F3.2, xem visitor_profiler.py)
+  - Nhan dien (MAC DINH BAT): hien Nam/Nu, khoang tuoi, Trong nuoc/chau A - Quoc te
+    canh khung nguoi va luu cho khach VAO cau (F3.2, xem visitor_profiler.py).
+    Tat bang --no-demographics.
+  - Gui / doc may chu chay o LUONG NEN: mang LAN cham hay mat ket noi khong lam
+    camera giat (truoc day moi lan goi API cho toi 2 giay -> chi con ~1 khung/giay).
   - Camera 1 xac dinh muc Vang/Do va bao server; server gui Telegram (F2)
   - Mat tin hieu camera -> bao server ngay, tu ket noi lai (NFR-03)
 
 CHAY (tu THU MUC GOC Cap2/, backend phai chay truoc):
-    python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics
-    python ai_engine/camera_bridge.py --camera-id 2 --source 1
+    python ai_engine/camera_bridge.py --camera-id 1 --source 0
+    python ai_engine/camera_bridge.py --camera-id 2 --source 1 --api http://192.168.1.10:8000
     python ai_engine/camera_bridge.py --camera-id 2 --source video_chan_cau_2.mp4
     python ai_engine/camera_bridge.py --camera-id 1 --source rtsp://user:pass@ip/stream
 
@@ -28,11 +31,11 @@ L (hoac chuot phai) de ve lai bang chuot: click 2 dau vach, roi click 1 diem o P
 Vach luu o ai_engine/config/line_cam<id>.json.
 
 Tuy chon:
-    --demographics   uoc luong gioi tinh + tuoi + trong/ngoai nuoc (can DeepFace)
-    --no-origin      (kem --demographics) bo uoc luong trong/ngoai nuoc cho nhanh hon
+    --no-demographics  tat nhan dien gioi tinh / tuoi / nguon khach (chi dem nguoi, nhanh hon)
+    --no-origin      bo uoc luong Trong nuoc/chau A - Quoc te cho nhanh hon
     --no-alerts      camera 1 khong gui muc canh bao (mac dinh chi camera 1 gui)
     --group-size     so nguoi toi thieu cua 1 doan (mac dinh 10, BRULE-03)
-    --model          model YOLO (mac dinh yolov8n.pt, hoac yolov8n-pose.pt khi --demographics).
+    --model          model YOLO (mac dinh yolov8n-pose.pt, hoac yolov8n.pt khi --no-demographics).
                      May manh: yolov8s.pt / yolo11s.pt (pose: yolov8s-pose.pt) chinh xac hon
     --imgsz 960      anh vao YOLO lon hon -> dem tot hon nguoi o xa, dong (mac dinh 640)
     --face-detector  yunet (mac dinh) | retinaface (chinh xac nhat, cham) | mtcnn | opencv
@@ -43,7 +46,9 @@ Phim (click vao cua so camera truoc): L / so 1 / chuot phai = ke lai vach · R =
 
 import argparse
 import os
+import queue
 import sys
+import threading
 import time
 
 import cv2
@@ -118,6 +123,51 @@ def _get(path):
     except requests.RequestException:
         pass
     return None
+
+
+class Net:
+    """Moi lan gui / doc may chu chay o luong nen, vong lap camera khong bao gio phai cho mang.
+    - post(): xep hang roi gui lan luot (day hang thi bo ban tin cu nhat).
+    - Luong doc: moi STATE_POLL_SEC doc /bridge/state, moi CONFIG_POLL_SEC doc nguong /config."""
+
+    def __init__(self):
+        self.q = queue.Queue(maxsize=300)
+        self.state = None
+        self.alert_threshold = None
+        self.ok = True
+        threading.Thread(target=self._sender, daemon=True, name="net-send").start()
+        threading.Thread(target=self._poller, daemon=True, name="net-poll").start()
+
+    def post(self, path, payload):
+        try:
+            self.q.put_nowait((path, payload))
+        except queue.Full:
+            try:
+                self.q.get_nowait()
+            except queue.Empty:
+                pass
+            self.q.put_nowait((path, payload))
+
+    def _sender(self):
+        while True:
+            path, payload = self.q.get()
+            res = _post(path, payload)
+            if path == "/bridge/crossing" and res:
+                self.state = res
+
+    def _poller(self):
+        last_cfg = 0.0
+        while True:
+            s = _get("/bridge/state")
+            self.ok = s is not None
+            if s:
+                self.state = s
+            if time.time() - last_cfg >= CONFIG_POLL_SEC:
+                c = _get("/config")
+                if c and c.get("alert_threshold"):
+                    self.alert_threshold = c["alert_threshold"]
+                last_cfg = time.time()
+            time.sleep(STATE_POLL_SEC)
 
 
 # ------------------------------------------------------------- ke vach
@@ -214,7 +264,8 @@ def draw_line_overlay(frame, layer, line: LineCrossingCounter):
     layer.text("VÀO CẦU", (tip[0] + 8, tip[1] - 10), size=18, bold=True, color=(20, 20, 20), bg=YELLOW, pad=4)
 
 
-def draw_hud(frame, layer, cam, state, level, thresholds, local_in, local_out, facade, fps, api_ok, group_size):
+def draw_hud(frame, layer, cam, state, level, thresholds, local_in, local_out, facade, fps, api_ok, group_size,
+             ai_status=""):
     fh, fw = frame.shape[:2]
     onbridge = int(state.get("onbridge", 0))
     big = 19 if fw >= 900 else 16
@@ -231,7 +282,7 @@ def draw_hud(frame, layer, cam, state, level, thresholds, local_in, local_out, f
         t = "MẤT KẾT NỐI SERVER"
         layer.text(t, (fw - layer.measure(t, small, True)[0] - 14, 12), size=small, bold=True, bg=(40, 40, 200), pad=4)
     stats = (f"Hôm nay {state.get('dem', 0)} lượt vào cầu · Camera này: vào {local_in} / ra {local_out} · "
-             f"Mặt tiền {facade} · {fps:.0f} khung/giây")
+             f"Mặt tiền {facade} · {fps:.0f} khung/giây" + (f" · {ai_status}" if ai_status else ""))
     while layer.measure(stats, small)[0] > fw - 24 and small > 10:
         small -= 1
     layer.text(stats, (12, fh - small - 16), size=small, bg=(25, 25, 25), pad=6)
@@ -262,7 +313,9 @@ def parse_args(argv=None):
                     help="Dia chi may chu khi chay nhieu may, vd http://192.168.1.10:8000 (mac dinh SMARTCAU_API hoac 127.0.0.1)")
     ap.add_argument("--api-key", default=None, help="Khoa camera neu may chu dat SMARTCAU_API_KEY")
     ap.add_argument("--source", default="0", help="Số webcam (0, 1...) hoặc đường dẫn video/RTSP")
-    ap.add_argument("--demographics", action="store_true", help="Ước lượng giới tính, tuổi, trong/ngoài nước")
+    ap.add_argument("--demographics", action="store_true", help="(Mặc định đã bật, giữ để lệnh cũ vẫn chạy)")
+    ap.add_argument("--no-demographics", action="store_true",
+                    help="Tắt nhận diện giới tính / tuổi / nguồn khách, chỉ đếm người")
     ap.add_argument("--no-origin", action="store_true", help="Bỏ ước lượng trong/ngoài nước")
     ap.add_argument("--no-alerts", action="store_true", help="Camera này không gửi mức cảnh báo")
     ap.add_argument("--group-size", type=int, default=10)
@@ -279,8 +332,7 @@ def parse_args(argv=None):
     ap.add_argument("--no-face-gate", action="store_true",
                     help="Tat cong chat luong mat (mac dinh chi phan tich khi mat du to, nhin thang, khong nhoe)")
     args = ap.parse_args(argv)
-    if args.no_origin and not args.demographics:
-        ap.error("--no-origin chỉ dùng kèm --demographics")
+    args.demographics = not args.no_demographics
     if args.model is None:
         args.model = "yolov8n-pose.pt" if args.demographics else "yolov8n.pt"
     args.source = int(args.source) if str(args.source).isdigit() else args.source
@@ -317,6 +369,7 @@ def main():
     facade = FacadeCounter()
 
     profiler = None
+    ai_status = "Nhận diện: TẮT (--no-demographics)"
     if args.demographics:
         import age_gender_estimator
         age_gender_estimator.DEFAULT_DETECTOR = args.face_detector
@@ -325,10 +378,15 @@ def main():
         if not ok_df:
             print(f"[CAMERA {cam}] DeepFace lỗi -> camera vẫn ĐẾM người bình thường nhưng KHÔNG nhận diện "
                   "giới tính / tuổi. Sửa theo hướng dẫn ở trên rồi chạy lại.")
-        profiler = VisitorProfiler(post=_post, with_origin=not args.no_origin, camera_id=cam,
-                                   quality_gate=not args.no_face_gate)
-        print(f"[CAMERA {cam}] Nhận diện giới tính, tuổi{'' if args.no_origin else ', trong/ngoài nước'}: BẬT.")
+            ai_status = "Nhận diện: LỖI DeepFace (xem cửa sổ lệnh)"
+        else:
+            ai_status = ""
+            print(f"[CAMERA {cam}] Nhận diện giới tính, tuổi{'' if args.no_origin else ', trong nước/châu Á - quốc tế'}: BẬT.")
 
+    net = Net()
+    if args.demographics and not ai_status:
+        profiler = VisitorProfiler(post=net.post, with_origin=not args.no_origin, camera_id=cam,
+                                   quality_gate=not args.no_face_gate)
     model = YOLO(args.model)
     line = load_line(cam)
     cap = open_camera(args.source)
@@ -351,8 +409,7 @@ def main():
           "R = vạch mặc định · Q = thoát.")
 
     state = _get("/bridge/state") or {"num1": 0, "num2": 0, "onbridge": 0, "dem": 0}
-    api_ok = bool(_get("/health"))
-    last_state = last_cfg = last_report = last_hb = 0.0
+    last_report = last_hb = 0.0
     local_in = local_out = facade_total = 0
     prev_level = "OK"
     fps, frames, fps_t0 = 0.0, 0, time.time()
@@ -369,7 +426,7 @@ def main():
                 break
             # NFR-03: mat tin hieu -> bao ngay, tu ket noi lai
             print(f"[CAMERA {cam}] Mất tín hiệu camera, đang kết nối lại...")
-            _post("/system_events", {"event_type": "CAMERA_LOST", "camera_id": cam,
+            net.post("/system_events", {"event_type": "CAMERA_LOST", "camera_id": cam,
                                      "message": f"[SmartCau AI] Camera chân cầu {cam} mất tín hiệu lúc "
                                                 f"{time.strftime('%H:%M:%S %d/%m/%Y')}. Chuyển sang điều tiết thủ công."})
             while True:
@@ -380,7 +437,7 @@ def main():
                     break
                 if cv2.waitKey(1) & 0xFF == ord("q"):
                     return
-            _post("/system_events", {"event_type": "CAMERA_RESTORED", "camera_id": cam,
+            net.post("/system_events", {"event_type": "CAMERA_RESTORED", "camera_id": cam,
                                      "message": f"[SmartCau AI] Camera chân cầu {cam} đã hoạt động lại."})
             print(f"[CAMERA {cam}] Đã kết nối lại.")
             continue
@@ -425,10 +482,16 @@ def main():
                     local_out += 1
                     if profiler is not None:
                         profiler.mark_exited(tid)
-                res = _post("/bridge/crossing", {"camera_id": cam, "direction": event, "track_id": tid})
-                api_ok = res is not None
-                if res:
-                    state = res
+                net.post("/bridge/crossing", {"camera_id": cam, "direction": event, "track_id": tid})
+                # hien ngay tren camera, so chinh xac (gom ca camera kia) ve sau <= 1 giay
+                key = f"num{cam}"
+                state = dict(state)
+                if event == "in":
+                    state[key] = state.get(key, 0) + 1
+                    state["dem"] = state.get("dem", 0) + 1
+                else:
+                    state[key] = state.get(key, 0) - 1
+                state["onbridge"] = max(0, state.get("num1", 0) + state.get("num2", 0))
                 print(f"[CAMERA {cam}] ID {tid} {'VÀO' if event == 'in' else 'RA'} cầu -> trên cầu: {state.get('onbridge')}")
 
             if profiler is not None:
@@ -445,30 +508,25 @@ def main():
         n_facade = facade.collect(now)
         if n_facade:
             facade_total += n_facade
-            _post("/facade_pass", {"camera_id": cam, "count": n_facade})
+            net.post("/facade_pass", {"camera_id": cam, "count": n_facade})
 
         group = groups.update(group_input, now)
         if group:
-            _post("/system_events", {"event_type": "GROUP_DETECTED", "count": group, "camera_id": cam,
+            net.post("/system_events", {"event_type": "GROUP_DETECTED", "count": group, "camera_id": cam,
                                      "message": f"[SmartCau AI] Đoàn khoảng {group} người đang đến chân cầu {cam} "
                                                 f"lúc {time.strftime('%H:%M:%S')}. Chuẩn bị điều tiết và kiểm tra vé đoàn."})
             print(f"[CAMERA {cam}] Phát hiện đoàn khoảng {group} người.")
 
-        if now - last_state >= STATE_POLL_SEC:
-            s = _get("/bridge/state")
-            api_ok = s is not None
-            if s:
-                state = s
-            last_state = now
-        if now - last_cfg >= CONFIG_POLL_SEC:
-            remote = (_get("/config") or {}).get("alert_threshold")
-            if remote and remote != thresholds.alert:
-                thresholds = CameraThresholds.from_alert_threshold(remote)
-                tracker.set_thresholds(thresholds)
-                print(f"[CAMERA {cam}] Ngưỡng mới: Vàng từ {thresholds.warning}, tối đa {thresholds.alert}.")
-            last_cfg = now
+        if net.state is not None:
+            state, net.state = net.state, None
+        api_ok = net.ok
+        remote = net.alert_threshold
+        if remote and remote != thresholds.alert:
+            thresholds = CameraThresholds.from_alert_threshold(remote)
+            tracker.set_thresholds(thresholds)
+            print(f"[CAMERA {cam}] Ngưỡng mới: Vàng từ {thresholds.warning}, tối đa {thresholds.alert}.")
         if now - last_hb >= HEARTBEAT_SEC:
-            _post("/bridge/heartbeat", {"camera_id": cam, "source": source_label, "fps": fps, "machine": MACHINE,
+            net.post("/bridge/heartbeat", {"camera_id": cam, "source": source_label, "fps": fps, "machine": MACHINE,
                                         "line": f"{line.p1} → {line.p2}", "sends_alerts": args.send_alerts,
                                         "demographics": profiler is not None})
             last_hb = now
@@ -477,7 +535,7 @@ def main():
         level = tracker.update(onbridge, now)
         if args.send_alerts:
             if now - last_report >= REPORT_SEC:
-                _post("/occupancy", {"count": onbridge, "status": level})
+                net.post("/occupancy", {"count": onbridge, "status": level})
                 last_report = now
             kind = tracker.pop_notification(now)
             stamp = time.strftime("%H:%M:%S %d/%m/%Y")
@@ -486,18 +544,18 @@ def main():
                        f"(tối đa {thresholds.alert}), vượt ngưỡng liên tục {int(thresholds.red_hold_sec)} giây. "
                        f"Thời điểm: {stamp}. Tạm dừng cho khách lên cầu.")
                 trigger_buzzer_signal(msg)
-                _post("/system_events", {"event_type": "CRITICAL_ALERT", "count": onbridge, "message": msg, "camera_id": cam})
+                net.post("/system_events", {"event_type": "CRITICAL_ALERT", "count": onbridge, "message": msg, "camera_id": cam})
             elif kind == "WARNING":
                 msg = (f"[SmartCau AI] CẢNH BÁO VÀNG - CẦU SẮP ĐẦY: {onbridge} người đang trên cầu "
                        f"(tối đa {thresholds.alert}). Thời điểm: {stamp}.")
-                _post("/system_events", {"event_type": "WARNING", "count": onbridge, "message": msg, "camera_id": cam})
+                net.post("/system_events", {"event_type": "WARNING", "count": onbridge, "message": msg, "camera_id": cam})
             if prev_level == "CRITICAL" and level != "CRITICAL":
-                _post("/system_events", {"event_type": "CRITICAL_CLEARED", "count": onbridge, "camera_id": cam,
+                net.post("/system_events", {"event_type": "CRITICAL_CLEARED", "count": onbridge, "camera_id": cam,
                                          "message": f"[SmartCau AI] Hết quá tải: còn {onbridge} người trên cầu."})
         prev_level = level
 
         draw_hud(out, layer, cam, state, level, thresholds, local_in, local_out, facade_total, fps, api_ok,
-                 groups.current_size)
+                 groups.current_size, ai_status)
         layer.render(out)
         cv2.imshow(window, out)
         key = cv2.waitKey(1) & 0xFF

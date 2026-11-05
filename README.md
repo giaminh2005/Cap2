@@ -1,6 +1,6 @@
 # SmartCau AI — Camera AI quản lý đám đông Chùa Cầu (Nhóm 50 · 49K22.3)
 
-Hệ thống đếm khách trên Chùa Cầu bằng 2 camera đặt ở 2 chân cầu, cảnh báo quá tải Vàng/Đỏ, ước lượng giới tính, độ tuổi, khách trong nước / nước ngoài, và trang web quản lý cho người trực, quản lý và quản trị viên.
+Hệ thống đếm khách trên Chùa Cầu bằng 2 camera đặt ở 2 chân cầu, cảnh báo quá tải Vàng/Đỏ, ước lượng giới tính, độ tuổi, khách trong nước/châu Á hay quốc tế, và trang web quản lý cho người trực, quản lý và quản trị viên.
 
 ## Kiến trúc 3 lớp
 
@@ -73,8 +73,10 @@ Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có t
 |---|---|---|
 | 1 | `uvicorn backend.main:app --reload --port 8000` | API: http://127.0.0.1:8000/docs |
 | 2 | `streamlit run frontend/app.py` | Web: http://localhost:8501 |
-| 3 | `python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics` | camera chân cầu 1 (gửi cảnh báo) |
-| 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1 --demographics` | camera chân cầu 2 |
+| 3 | `python ai_engine/camera_bridge.py --camera-id 1 --source 0` | camera chân cầu 1 (gửi cảnh báo) |
+| 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1` | camera chân cầu 2 |
+
+Nhận diện giới tính / tuổi / nguồn khách bật sẵn; thêm `--no-demographics` nếu chỉ cần đếm. Các ghi chú, hướng dẫn và mã yêu cầu (FR, BRULE, KPI) đã gỡ khỏi giao diện web được lưu ở `docs/GHI_CHU_GIAO_DIEN.md`.
 
 - **Đăng nhập lần đầu:** `admin` / `admin123`, hệ thống bắt đổi mật khẩu. Tạo thêm tài khoản Quản lý, Người trực ở trang **Tài khoản**.
 - `--source` nhận số webcam, đường dẫn video hoặc địa chỉ `rtsp://...`.
@@ -97,7 +99,7 @@ Một máy làm **máy chủ** (`uvicorn backend.main:app --host 0.0.0.0 --port 
 
 ## Lưu ý về nhận diện
 
-- **Trong nước / nước ngoài là ước lượng**: mô hình chỉ phân được nhóm khu vực rộng và gộp khách Việt Nam với khách Hàn, Nhật, Trung, nên không xác định được quốc tịch.
+- **Trong nước/châu Á – Quốc tế là ước lượng**: mô hình chỉ phân được nhóm khu vực rộng và gộp khách Việt Nam với khách Hàn, Nhật, Trung, nên không xác định được quốc tịch.
 - Kết quả có độ tin cậy dưới 70% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
 - Hệ thống không lưu ảnh hay đặc trưng khuôn mặt; khung hình chỉ xử lý trong bộ nhớ.
 

@@ -10,7 +10,9 @@ Tren may dat o dau cau: mo http://<may-chu>:8000/led/?dau=1 (hoac ?dau=2) bang C
 import streamlit as st
 import streamlit.components.v1 as components
 
-from common import note, page_header, public_api_base
+_iframe = getattr(st, "iframe", None) or components.iframe   # Streamlit moi: st.iframe
+
+from common import page_header, public_api_base
 
 page_header("Vận hành · Tín hiệu tại chỗ", "Bảng LED hai đầu cầu",
             "Mỗi đầu cầu một màn hình. Linh Thân và Linh Khuyển chào khách, nhắc đi chậm và mời khách chờ khi cầu đầy. "
@@ -35,13 +37,7 @@ for col, n in zip(cols, shown):
         b1, b2 = st.columns(2)
         b1.link_button("Mở toàn màn hình", url, type="primary", width="stretch")
         b2.link_button("Mở kèm bảng debug", f"{url}&debug=1", width="stretch")
-        components.iframe(url, height=330 if len(shown) == 2 else 620)
+        _iframe(url, height=330 if len(shown) == 2 else 620)
 
 st.link_button("Mở trang xem song song 2 màn hình", f"{base}hai-man-hinh.html")
 
-note("Trên máy đặt ở mỗi đầu cầu: mở <code>" + base + "?dau=1</code> (đầu cầu 1) hoặc <code>" + base +
-     "?dau=2</code> (đầu cầu 2) bằng Chrome hoặc Edge rồi nhấn <b>F11</b>. "
-     "Địa chỉ trên đã tự đổi theo máy chủ bạn đang truy cập, dùng được cho máy LED khác trong cùng mạng. "
-     "Thêm <code>&amp;scene=3</code> để khóa một cảnh, <code>&amp;debug=1</code> (hoặc phím <b>D</b>) để mở bảng giả lập "
-     "Xanh / Vàng / Đỏ và thử từng clip. Vai nhân vật của mỗi đầu cầu đổi được trong <code>CONFIG.ends</code> "
-     "ở đầu file <code>backend/led_display/led.js</code>.")

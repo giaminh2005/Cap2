@@ -49,7 +49,7 @@ def open_incidents():
             if not i["acknowledged"] and c3.button("Đã xử lý", key=f"ack{i['id']}", type="primary", width="stretch"):
                 _act(f"/incidents/{i['id']}/ack", {"note": note_txt})
             if not i["false_alarm"] and c3.button("Báo sai", key=f"fa{i['id']}", width="stretch",
-                                                  help="Cảnh báo không đúng thực tế (KPI O5)"):
+                                                  help="Cảnh báo không đúng thực tế"):
                 _act(f"/incidents/{i['id']}/false_alarm", {"is_false": True, "note": note_txt})
             if c3.button("Đóng sự cố", key=f"close{i['id']}", width="stretch",
                          help="Dùng khi camera mất tín hiệu và đã xử lý xong bằng tay"):
@@ -66,10 +66,10 @@ with tab1:
     handled = [i["handle_seconds"] for i in real if i["handle_seconds"] is not None]
     kpi_row([
         kpi("Sự cố đã đóng", fmt_int(len(closed)), "200 sự cố gần nhất", "primary"),
-        kpi("Xử lý trong 3 phút · O4", fmt_pct(len(within) / len(real) * 100) if real else "–", "mục tiêu ≥ 90%",
+        kpi("Xử lý trong 3 phút", fmt_pct(len(within) / len(real) * 100) if real else "–", "mục tiêu ≥ 90%",
             "ok" if real and len(within) / len(real) >= .9 else "warn"),
         kpi("Phản hồi trung bình", fmt_mmss(sum(handled) / len(handled)) if handled else "–", "từ lúc báo Đỏ đến lúc xác nhận", "info"),
-        kpi("Báo sai · O5", fmt_pct((len(closed) - len(real)) / len(closed) * 100) if closed else "–", "mục tiêu ≤ 5%",
+        kpi("Báo sai", fmt_pct((len(closed) - len(real)) / len(closed) * 100) if closed else "–", "mục tiêu ≤ 5%",
             "ok" if closed and (len(closed) - len(real)) / len(closed) <= .05 else "warn"),
     ])
     if closed:

@@ -160,7 +160,7 @@ def summary(db: Session = Depends(get_db)):
         t_s, t_e = local_day_range_utc(now, now)
         today_v = [o for o, ts in visits if t_s <= ts < t_e]
         week_share = sum(1 for o, _ in visits if o == "Nuoc ngoai") / len(visits) * 100
-        text = f"Khách nước ngoài (ước lượng) chiếm {week_share:.0f}% lượt khách 7 ngày qua"
+        text = f"Khách quốc tế (ước lượng) chiếm {week_share:.0f}% lượt khách 7 ngày qua"
         if len(today_v) >= 10:
             today_share = sum(1 for o in today_v if o == "Nuoc ngoai") / len(today_v) * 100
             text += f"; hôm nay {today_share:.0f}%"

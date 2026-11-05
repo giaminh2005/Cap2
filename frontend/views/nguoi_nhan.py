@@ -5,7 +5,7 @@ Phu trach: KHANH.
 
 import streamlit as st
 
-from common import (ApiError, api_delete, api_get, api_post, api_put, badge, empty, note, page_header, safe_get,
+from common import (ApiError, api_delete, api_get, api_post, api_put, badge, empty, page_header, safe_get,
                     section)
 
 page_header("Hệ thống · Thông báo", "Người nhận cảnh báo",
@@ -27,14 +27,9 @@ if st_tg.get("connected"):
 else:
     if st_tg.get("error"):
         st.error(f"Token hiện tại không dùng được: {st_tg['error']}")
-    with st.expander("Hướng dẫn tạo bot Telegram (làm 1 lần, khoảng 3 phút)", expanded=True):
-        st.markdown("""
-1. Mở Telegram, tìm **@BotFather** (có dấu tích xanh) và bấm **Start**.
-2. Gửi lệnh `/newbot`, đặt **tên hiển thị** (vd *SmartCau Chùa Cầu*), rồi đặt **username** kết thúc bằng `bot` (vd `smartcau_hoian_bot`).
-3. BotFather trả về một **token** dạng `7012345678:AAH3k...`. Sao chép và dán vào ô dưới đây.
-""")
     with st.form("tg_token"):
-        token = st.text_input("Token của bot", type="password", placeholder="7012345678:AAH3k...")
+        token = st.text_input("Token của bot", type="password", placeholder="7012345678:AAH3k...",
+                              help="Lấy từ @BotFather trên Telegram (lệnh /newbot)")
         if st.form_submit_button("Kết nối", type="primary"):
             try:
                 r = api_put("/telegram/token", {"token": token})
@@ -46,8 +41,7 @@ else:
 # --------------------------------------------------------------- 2. tim chat_id
 section("2 · Thêm người nhận từ Telegram")
 if st_tg.get("connected"):
-    note(f"Mỗi người nhận mở Telegram, tìm <b>@{st_tg['bot']['username']}</b>, bấm <b>Start</b> rồi gửi một tin bất kỳ. "
-         "Muốn gửi vào nhóm trực: thêm bot vào nhóm và nhắn một tin trong nhóm. Sau đó bấm <b>Tìm</b> bên dưới.")
+    st.caption(f"Người nhận nhắn một tin cho @{st_tg['bot']['username']} rồi bấm Tìm.")
     if st.button("Tìm người vừa nhắn cho bot"):
         try:
             st.session_state["tg_chats"] = api_get("/telegram/chats")
@@ -113,6 +107,3 @@ with st.expander("Thêm người nhận bằng tay"):
             except ApiError as e:
                 st.error(str(e))
 
-note("Tin nhắn được gửi khi có: cảnh báo Vàng, cảnh báo Đỏ (nhắc lại tối đa 1 lần mỗi 3 phút), đoàn khách lớn, "
-     "mất tín hiệu camera, sự cố đóng, và báo cáo ngày (kèm tệp PDF) sau giờ đóng cửa. "
-     "Kênh Zalo OA chưa hỗ trợ trong MVP: Zalo yêu cầu OA đã xác thực doanh nghiệp và mẫu tin ZNS có phí.")

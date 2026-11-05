@@ -53,7 +53,7 @@ $env:SMARTCAU_API_KEY = "chuacau2026"
 Máy camera cần code dự án và thư viện AI (giống phần cài đặt trong README). Không cần chạy backend hay web.
 ```powershell
 python tools/kiem_tra_mang.py http://192.168.1.10:8000
-python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics --api http://192.168.1.10:8000
+python ai_engine/camera_bridge.py --camera-id 1 --source 0 --api http://192.168.1.10:8000
 ```
 Máy thứ hai dùng `--camera-id 2`. Nếu máy chủ đặt khóa ở bước 2, thêm `--api-key chuacau2026`.
 Chỉ camera 1 gửi mức cảnh báo Vàng/Đỏ; cả hai đều gửi lượt vào/ra, lượt mặt tiền, đoàn khách, hồ sơ khách.

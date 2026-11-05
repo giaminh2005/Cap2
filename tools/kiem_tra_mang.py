@@ -70,8 +70,8 @@ def server_mode():
     ip = ips[0]
     print(f"""
 === DÙNG CHO CÁC MÁY KHÁC (cùng mạng) ===
-Máy camera chân cầu 1:  python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics --api http://{ip}:8000
-Máy camera chân cầu 2:  python ai_engine/camera_bridge.py --camera-id 2 --source 0 --demographics --api http://{ip}:8000
+Máy camera chân cầu 1:  python ai_engine/camera_bridge.py --camera-id 1 --source 0 --api http://{ip}:8000
+Máy camera chân cầu 2:  python ai_engine/camera_bridge.py --camera-id 2 --source 0 --api http://{ip}:8000
 Máy xem web quản lý:    mở trình duyệt  http://{ip}:8501
 Bảng LED đầu cầu 1:     mở Chrome/Edge  http://{ip}:8000/led/?dau=1   rồi nhấn F11
 Bảng LED đầu cầu 2:     mở Chrome/Edge  http://{ip}:8000/led/?dau=2

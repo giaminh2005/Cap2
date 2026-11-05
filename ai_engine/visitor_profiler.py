@@ -8,7 +8,7 @@ DemographicsEngine bo phieu theo thoi gian + luu ho so 1 lan) de dung cho he
 thong 2 camera chan cau (camera_bridge.py). Loi AI van nam o
 demographics_engine.py / age_gender_estimator.py / region_mapping.py.
 
-Hien tren camera (giong camera_in.py): "Nam/Nu · khoang tuoi · Trong nuoc/Nuoc ngoai"
+Hien tren camera: "Nam/Nu · khoang tuoi · Trong nuoc/chau A | Quoc te"
 ngay khi bo phieu du tin cay >= 70%, ke ca truoc khi khach qua vach.
 
 Luu vao CSDL (POST /visit_events) CHI khi khach thuc su VAO cau, 1 lan / nguoi:
@@ -26,7 +26,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Dict, List, Optional
 
 GENDER_VI = {"Man": "Nam", "Woman": "Nữ"}
-ORIGIN_VI = {"Trong nuoc": "Trong nước", "Nuoc ngoai": "Nước ngoài"}
+ORIGIN_VI = {"Trong nuoc": "Trong nước/châu Á", "Nuoc ngoai": "Quốc tế"}
 UNKNOWN_AGE = "Khong xac dinh"
 REGION_TO_ORIGIN = {"Dong A / Noi dia": "Trong nuoc", "Phuong Tay": "Nuoc ngoai",
                     "Nam A": "Nuoc ngoai", "Khac": "Nuoc ngoai"}
@@ -208,12 +208,14 @@ class VisitorProfiler:
             lines = [head, f"{GENDER_VI.get(res['gender'], res['gender'])} · {res.get('age_range') or '?'}"]
             if self.with_origin:
                 origin = res.get("origin") if t.saved is not None else self.origin_of(tid)
-                lines.append(ORIGIN_VI.get(origin, "Chưa rõ trong/ngoài nước"))
+                lines.append(ORIGIN_VI.get(origin, "Chưa rõ nguồn khách"))
             return lines
         if t.last_reject and not t.done:
             return [head, QUALITY_HINT.get(t.last_reject, "Chờ thấy rõ mặt")]
         if t.info is not None and not t.done:
             return [head, f"Đang nhận diện {min(t.info.get('n_votes', 0), 3)}/3"]
+        if not t.done:
+            return [head, "Đang nhận diện…"]
         return None
 
     # -------------------------------------------------------------- ghi

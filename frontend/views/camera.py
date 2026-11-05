@@ -2,12 +2,12 @@
 frontend/views/camera.py  —  MODULE M1 · F1.1 Thiet lap nguon hinh (FR-01, NFR-03)
 Phu trach: MINH.
 Trang thai 2 camera chan cau (nhip tim moi 5 giay; > 30 giay khong thay ->
-mat tin hieu), nguon hinh, toc do xu ly, vach ke dang dung, huong dan chay.
+mat tin hieu), nguon hinh, toc do xu ly, vach ke dang dung. Cach chay camera: docs/GHI_CHU_GIAO_DIEN.md.
 """
 
 import streamlit as st
 
-from common import badge, fmt_time, note, page_header, public_api_base, safe_get, section
+from common import badge, fmt_time, page_header, safe_get
 
 page_header("Hệ thống · Nguồn hình", "Camera", "Trạng thái hai camera chân cầu, tự cập nhật mỗi 5 giây.")
 
@@ -40,14 +40,3 @@ def cams():
 
 
 cams()
-
-section("Cách chạy camera")
-srv = public_api_base()
-st.markdown("Trên **máy đặt camera** (có thể là máy khác máy chủ, cùng mạng), mở cửa sổ dòng lệnh tại thư mục dự án:")
-st.code(f"python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics --api {srv}", language="bash")
-st.code(f"python ai_engine/camera_bridge.py --camera-id 2 --source 0 --demographics --api {srv}", language="bash")
-st.caption(f"Máy chủ: {srv}. Kiểm tra kết nối từ máy camera: python tools/kiem_tra_mang.py {srv}")
-note("<b>--source</b> nhận số webcam (0, 1…), đường dẫn tệp video hoặc địa chỉ RTSP của camera IP. "
-     "Trên cửa sổ camera nhấn <b>l</b> để kẻ lại vạch (click 2 đầu vạch rồi click 1 điểm ở phía cầu), "
-     "<b>q</b> để thoát. Chỉ camera 1 gửi mức cảnh báo Vàng/Đỏ. Khi mất tín hiệu, camera báo ngay về máy chủ "
-     "và tự kết nối lại; người trực nhận tin nhắn để chuyển sang điều tiết thủ công.")

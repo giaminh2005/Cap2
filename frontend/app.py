@@ -5,7 +5,7 @@ CHAY (tu THU MUC GOC du an, sau khi backend da chay):
     streamlit run frontend/app.py
 
 Dang nhap bang tai khoan trong CSDL (lan dau: admin / admin123). Menu hien
-theo vai tro (FR-12):
+theo vai tro (FR-12). Chua dang nhap -> an menu.
     Nguoi truc : Tong quan, Truc ca & su co, Bang LED, Luot qua cau, Doi chieu ve
     Quan ly    : + Co cau khach, Lich su, Bao cao, Camera, Quyen rieng tu
     Quan tri   : + Cau hinh, Nguoi nhan canh bao, Tai khoan, Google Sheets
@@ -26,7 +26,11 @@ from common import (ROLE_VI, alert_watcher, api_is_up, apply_theme, change_passw
                     current_user, login_page, logout, restore_session)
 
 if not restore_session():
-    login_page()
+    # Chua dang nhap: chi co 1 trang "Dang nhap" va AN menu, de menu cua phien truoc khong con sot lai sau khi dang xuat
+    st.navigation([st.Page(login_page, title="Đăng nhập", icon=":material/login:", url_path="dang-nhap")],
+                  position="hidden").run()
+    st.markdown("<style>[data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl']{display:none}</style>",
+                unsafe_allow_html=True)
     st.stop()
 
 apply_theme()
@@ -34,11 +38,16 @@ user = current_user()
 role = user["role"]
 
 if user.get("must_change_password"):
-    from common import page_header
-    page_header("Bảo mật tài khoản", "Đổi mật khẩu", "Mật khẩu mới phải có ít nhất 6 ký tự.")
-    change_password_form(forced=True)
-    if st.button("Đăng xuất"):
-        logout()
+    def _force_change():
+        from common import page_header
+        page_header("Bảo mật tài khoản", "Đổi mật khẩu", "Mật khẩu mới phải có ít nhất 6 ký tự.")
+        change_password_form(forced=True)
+        if st.button("Đăng xuất"):
+            logout()
+    st.navigation([st.Page(_force_change, title="Đổi mật khẩu", icon=":material/lock:", url_path="doi-mat-khau")],
+                  position="hidden").run()
+    st.markdown("<style>[data-testid='stSidebar'],[data-testid='stSidebarCollapsedControl']{display:none}</style>",
+                unsafe_allow_html=True)
     st.stop()
 
 ALL, MANAGER, ADMIN = ("admin", "quan_ly", "nguoi_truc"), ("admin", "quan_ly"), ("admin",)
