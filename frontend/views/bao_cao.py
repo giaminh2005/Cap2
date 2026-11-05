@@ -10,15 +10,6 @@ from datetime import date, timedelta
 import pandas as pd
 import streamlit as st
 
-import importlib  # noqa: E402
-
-import backend.report_export as _rx  # noqa: E402
-
-# Streamlit giu module da nap trong bo nho: sau "git pull" ma chua chay lai Streamlit thi van la ban CU
-# -> thieu ham / bien moi (ImportError). Tu nap lai ban moi tren o dia.
-if not all(hasattr(_rx, n) for n in ("ORG_NAME", "ORG_PARENT", "PDF_DEFAULTS", "SECTIONS", "period_label")):
-    importlib.reload(_rx)
-
 from backend.report_export import (ORG_NAME, ORG_PARENT, PDF_DEFAULTS, SECTIONS, period_label, report_tables, to_excel,
                                    to_pdf)
 from common import (C, HAS_PLOTLY, ApiError, current_user, insight_list, api_get_bytes, api_post, empty, fmt_duration,
