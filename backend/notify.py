@@ -42,7 +42,8 @@ def telegram_api(method: str, token: str = None, **params):
     if not token:
         return False, NO_TOKEN
     try:
-        r = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=params, timeout=10)
+        r = requests.post(f"https://api.telegram.org/bot{token}/{method}", json=params,
+                          timeout=10 + int(params.get("timeout", 0)))   # getUpdates cho toi `timeout` giay
         d = r.json()
     except (requests.RequestException, ValueError) as e:
         return False, f"Không kết nối được Telegram: {e}"
@@ -51,12 +52,33 @@ def telegram_api(method: str, token: str = None, **params):
     return True, d["result"]
 
 
-def _send_telegram(chat_id: str, text: str) -> str:
-    ok, res = telegram_api("sendMessage", chat_id=chat_id, text=text)
+WEB_URL = os.environ.get("SMARTCAU_WEB_URL", "").rstrip("/")   # vd http://192.168.1.10:8501 -> them nut mo web
+
+
+def keyboard(buttons):
+    """buttons: list cac hang, moi hang list (text, callback_data | url). Tra ve reply_markup hoac None."""
+    if not buttons:
+        return None
+    rows = []
+    for row in buttons:
+        rows.append([{"text": t, ("url" if str(v).startswith("http") else "callback_data"): v} for t, v in row])
+    return {"inline_keyboard": rows}
+
+
+def _send_telegram(chat_id: str, text: str, buttons=None) -> str:
+    """Gui tin dinh dang HTML (in dam, bieu tuong...). Loi dinh dang -> gui lai dang chu thuong."""
+    params = {"chat_id": chat_id, "text": text, "parse_mode": "HTML", "disable_web_page_preview": True}
+    markup = keyboard(buttons)
+    if markup:
+        params["reply_markup"] = markup
+    ok, res = telegram_api("sendMessage", **params)
+    if not ok and "parse" in str(res).lower():
+        params.pop("parse_mode")
+        ok, res = telegram_api("sendMessage", **params)
     return "ok" if ok else res
 
 
-def deliver(recipients: List[dict], text: str) -> List[dict]:
+def deliver(recipients: List[dict], text: str, buttons=None) -> List[dict]:
     """Gui ngay (dong bo) toi danh sach {name, channel, address}. Tra ve ket qua tung nguoi."""
     targets = list(recipients)
     if not targets and TELEGRAM_CHAT_ID:
@@ -64,7 +86,7 @@ def deliver(recipients: List[dict], text: str) -> List[dict]:
     results = []
     for r in targets:
         if r["channel"] == "telegram":
-            status = _send_telegram(r["address"], text)
+            status = _send_telegram(r["address"], text, buttons)
         else:
             status = f"Kênh {r['channel']} chưa hỗ trợ trong MVP."
         results.append({"name": r["name"], "channel": r["channel"], "status": status})
@@ -73,8 +95,8 @@ def deliver(recipients: List[dict], text: str) -> List[dict]:
     return results
 
 
-def deliver_async(recipients: List[dict], text: str):
-    threading.Thread(target=deliver, args=(list(recipients), text), daemon=True).start()
+def deliver_async(recipients: List[dict], text: str, buttons=None):
+    threading.Thread(target=deliver, args=(list(recipients), text, buttons), daemon=True).start()
 
 
 def deliver_document(recipients: List[dict], filename: str, content: bytes, caption: str = "") -> List[dict]:
@@ -89,7 +111,7 @@ def deliver_document(recipients: List[dict], filename: str, content: bytes, capt
         else:
             try:
                 resp = requests.post(f"https://api.telegram.org/bot{telegram_token()}/sendDocument",
-                                     data={"chat_id": r["address"], "caption": caption},
+                                     data={"chat_id": r["address"], "caption": caption, "parse_mode": "HTML"},
                                      files={"document": (filename, content, "application/pdf")}, timeout=20)
                 status = "ok" if resp.status_code == 200 else f"Telegram lỗi {resp.status_code}"
             except requests.RequestException as e:

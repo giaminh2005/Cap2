@@ -44,22 +44,14 @@ def _summary(db, day: datetime) -> dict:
     return report_summary(period="day", date=day.strftime("%Y-%m-%d"), db=db)
 
 
-def summary_text(r: dict) -> str:
-    k = r["kpis"]
+def summary_text(r: dict, tickets_missing: bool = False) -> str:
+    from .messages import daily_report_message
+    return daily_report_message(r, tickets_missing)
 
-    def pct(v):
-        return "–" if v is None else f"{v:.0f}%"
 
-    d = r["date_to"]
-    return (f"[SmartCau AI] BÁO CÁO NGÀY {d[8:]}/{d[5:7]}/{d[:4]}\n"
-            f"• Lượt vào cầu: {r['total_entries']} · lượt qua mặt tiền: {r['facade_passes']}\n"
-            f"• Đông nhất: {r['peak_count']} người cùng lúc"
-            + (f" · giờ nhiều khách nhất: {r['peak_hour']}h" if r["peak_hour"] is not None else "") + "\n"
-            f"• Số phút vượt sức chứa (O1): {k['o1_minutes_over']}\n"
-            f"• Sự cố quá tải: {r['incidents']} · xử lý trong 3 phút (O4): {pct(k['o4_handled_within_3min_pct'])}"
-            f" · báo sai (O5): {pct(k['o5_false_alarm_pct'])}\n"
-            f"• Cảnh báo Vàng: {r['alerts']['WARNING']} · đoàn khách lớn: {r['alerts']['GROUP_DETECTED']}"
-            + (f"\n• Chênh lệch vé (O8): {k['o8_gap_rate_pct']}%" if k["o8_gap_rate_pct"] is not None else ""))
+def _tickets_missing(db, date_s: str) -> bool:
+    from .routers.tickets import TicketCount
+    return db.query(TicketCount.id).filter(TicketCount.date == date_s).first() is None
 
 
 def pdf_of(rep: DailyReport) -> bytes:
@@ -72,7 +64,7 @@ def _deliver(report_id: int, text: str, pdf: bytes, filename: str):
     with SessionLocal() as db:
         recipients = active_recipients(db)
         results = notify.deliver(recipients, text)
-        results += notify.deliver_document(recipients, filename, pdf, f"Báo cáo ngày {filename[13:23]}")
+        results += notify.deliver_document(recipients, filename, pdf, f"📎 Báo cáo ngày {filename[13:23]}")
         rep = db.query(DailyReport).filter(DailyReport.id == report_id).first()
         ok = sum(1 for x in results if x["status"] == "ok")
         rep.sent_at = datetime.utcnow()
@@ -99,7 +91,8 @@ def generate(db, day: datetime, send: bool = True, sync_send: bool = False) -> D
     db.commit()
     db.refresh(rep)
     if send:
-        args = (rep.id, summary_text(r), pdf_of(rep), f"bao_cao_ngay_{date_s}.pdf")
+        missing = r["total_entries"] > 0 and _tickets_missing(db, date_s)
+        args = (rep.id, summary_text(r, missing), pdf_of(rep), f"bao_cao_ngay_{date_s}.pdf")
         if sync_send:
             _deliver(*args)
             db.refresh(rep)
@@ -129,11 +122,50 @@ def run_due(db, now_local: datetime = None, send: bool = True):
     if yesterday.strftime("%Y-%m-%d") not in exists and _has_data(db, yesterday):
         generate(db, yesterday, send=send)
         done.append(yesterday.strftime("%Y-%m-%d"))
+    open_h, open_m = map(int, cfg.open_time.split(":"))
+    mins, open_min = now_local.hour * 60 + now_local.minute, open_h * 60 + open_m
+    if send and open_min <= mins < min(open_min + 60, close_h * 60 + close_m) \
+            and _once(db, "MORNING_BRIEF", today, now_local):     # ban tin dau ngay: trong 1 gio dau sau gio mo cua
+        _send_morning(db)
+        done.append("morning")
+    # Nhac nhap so cuong ve 30 phut truoc gio dong cua (de bao cao ngay tinh duoc chenh lech ve)
+    remind = datetime(2000, 1, 1, close_h, close_m) - timedelta(minutes=30)
+    if send and (remind.hour, remind.minute) <= (now_local.hour, now_local.minute) < (close_h, close_m) \
+            and _tickets_missing(db, today.strftime("%Y-%m-%d")) and _once(db, "TICKET_REMINDER", today, now_local):
+        notify.deliver_async(_recipients(db), "🎟 <b>NHẮC NHẬP SỐ CUỐNG VÉ</b>\n"
+                             f"Còn 30 phút nữa đóng cửa ({cfg.close_time}) mà chưa nhập số cuống vé hôm nay.\n"
+                             "Nhập ở trang <b>Đối chiếu vé</b> để báo cáo ngày tính được chênh lệch vé.")
+        done.append("ticket-reminder")
     after_close = (now_local.hour, now_local.minute) >= (close_h, close_m)
     if after_close and today.strftime("%Y-%m-%d") not in exists:
         generate(db, today, send=send)
         done.append(today.strftime("%Y-%m-%d"))
     return done
+
+
+def _recipients(db):
+    from .routers.admin import active_recipients
+    return active_recipients(db)
+
+
+def _once(db, kind: str, today: datetime, now_local: datetime = None) -> bool:
+    """True neu hom nay chua lam viec `kind` (ghi lai vao nhat ky su kien de khong lap sau khi khoi dong lai)."""
+    from .models import SystemEvent
+    from .timeutil import local_day_range_utc
+    s, e = local_day_range_utc(today, today)
+    if db.query(SystemEvent.id).filter(SystemEvent.event_type == kind, SystemEvent.timestamp >= s,
+                                       SystemEvent.timestamp < e).first():
+        return False
+    from .timeutil import LOCAL_UTC_OFFSET
+    db.add(SystemEvent(event_type=kind, message=f"Tự động: {kind}", timestamp=(now_local or local_now()) - LOCAL_UTC_OFFSET))
+    db.commit()
+    return True
+
+
+def _send_morning(db):
+    from .messages import morning_message
+    from .routers.alerts import buttons
+    notify.deliver_async(_recipients(db), morning_message(db), buttons())
 
 
 def start_scheduler(interval_sec: int = 60):

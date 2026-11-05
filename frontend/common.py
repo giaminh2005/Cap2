@@ -286,8 +286,12 @@ def fmt_mmss(seconds) -> str:
     return f"{m}:{s:02d}<small> phút</small>"
 
 
+def local_now():
+    return datetime.utcnow() + timedelta(hours=utc_offset_hours())
+
+
 def local_today():
-    return (datetime.utcnow() + timedelta(hours=utc_offset_hours())).date()
+    return local_now().date()
 
 
 # ------------------------------------------------------------------- API

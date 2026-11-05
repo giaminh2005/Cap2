@@ -196,7 +196,12 @@ def test_recipient(rid: int, p: Principal = Depends(require_admin), db: Session 
     r = db.query(Recipient).filter(Recipient.id == rid).first()
     if r is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy người nhận.")
-    text = f"[SmartCau AI] Tin nhắn thử gửi bởi {p.display} lúc {local_now():%H:%M %d/%m/%Y}."
+    from html import escape
+
+    from ..messages import status_message
+    text = (f"🔔 <b>Tin nhắn thử</b> gửi bởi {escape(p.display)} lúc {local_now():%H:%M %d/%m/%Y}.\n"
+            f"Từ nay {escape(r.name)} sẽ nhận cảnh báo của Chùa Cầu tại đây. Gõ /help để xem lệnh.\n\n"
+            + status_message(db))
     return notify.deliver([{"name": r.name, "channel": r.channel, "address": r.address}], text)[0]
 
 
@@ -281,11 +286,14 @@ def clear_telegram_token(p: Principal = Depends(require_admin), db: Session = De
 @router.get("/telegram/chats")
 def telegram_chats(p: Principal = Depends(require_admin), db: Session = Depends(get_db)):
     """Danh sach chat vua nhan tin cho bot (getUpdates) de lay chat_id ma khong can mo trinh duyet."""
+    from .. import telegram_bot
     load_telegram_token(db)
+    known = {r.address for r in db.query(Recipient).all()}
+    if telegram_bot.running():   # bot dang doc tin nhan -> lay tu bo nho cua bot (getUpdates chi 1 noi doc duoc)
+        return [dict(c, added=c["chat_id"] in known) for c in telegram_bot.SEEN.values()]
     ok, res = notify.telegram_api("getUpdates", limit=100)
     if not ok:
         raise HTTPException(status_code=400, detail=res)
-    known = {r.address for r in db.query(Recipient).all()}
     chats = {}
     for upd in res:
         msg = upd.get("message") or upd.get("channel_post") or upd.get("my_chat_member") or {}

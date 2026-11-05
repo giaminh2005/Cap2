@@ -116,3 +116,27 @@ Tạo khóa Google (làm 1 lần, khoảng 10 phút):
 6. Dán đường link Google Sheet và tải tệp khóa trên trang, rồi bấm **Đồng bộ ngay**.
 
 Tệp khóa được lưu ở thư mục `config/` trên máy chạy giao diện và không được đưa lên GitHub. Không gửi tệp này cho người ngoài nhóm.
+
+## Tin nhắn Telegram và tự động hóa
+Mọi tin cảnh báo có định dạng (in đậm, biểu tượng) và kèm **tình hình hiện tại**: số người / sức chứa (thanh màu), từng chân cầu, tốc độ vào / ra 5 phút qua, dự kiến bao lâu nữa đầy, thời gian chờ, lượt vào hôm nay, camera nào đang chạy, sự cố đang mở.
+
+| Tin | Khi nào | Nút bấm |
+|---|---|---|
+| 🟡 Cảnh báo Vàng | Cầu sắp đầy (trong giờ mở cửa) | 📍 Tình hình · 📊 Hôm nay |
+| 🔴 Cảnh báo Đỏ / ⏰ Nhắc lại | Quá tải liên tục 15 giây, nhắc lại tối đa mỗi 3 phút | **✅ Đã xử lý** · 📍 · 📊 |
+| 🙋 Đã nhận xử lý | Có người bấm "Đã xử lý" (trên web hoặc Telegram) — báo cho cả nhóm để không ra trùng | 📍 · 📊 |
+| ✅ Hết quá tải | Sự cố tự đóng / đóng tay: thời lượng, cao nhất, ai xử lý | 📍 · 📊 |
+| 👥 Đoàn khách lớn · 📷 Mất / có lại tín hiệu camera | Theo sự kiện camera | 📍 · 📊 |
+| ☀️ Bản tin đầu ngày | Trong 1 giờ đầu sau giờ mở cửa: lượt hôm qua, dự báo hôm nay, giờ cao điểm, camera nào chưa bật | 📍 · 📊 |
+| 🎟 Nhắc nhập số cuống vé | 30 phút trước giờ đóng cửa nếu hôm nay chưa nhập | — |
+| 📋 Báo cáo ngày + PDF | Sau giờ đóng cửa; nhắc nếu thiếu số cuống vé | — |
+
+Lệnh gõ cho bot (chỉ người có trong danh sách nhận cảnh báo; người lạ nhận lại chat_id của họ để gửi quản trị viên):
+`/tinhhinh` tình hình ngay lúc này · `/homnay` tổng kết hôm nay + dự báo · `/suco` sự cố đang mở · `/help`.
+
+Muốn tin nhắn có nút **🖥 Mở trang quản lý**: đặt biến môi trường `SMARTCAU_WEB_URL=http://<IP máy chủ>:8501` trước khi chạy backend.
+Bot đọc tin nhắn bằng luồng nền của backend; tắt bằng `SMARTCAU_DISABLE_BOT=1`.
+
+## Đối chiếu vé — nhập liệu
+- Chọn **Cả ngày** hoặc **Từng giờ**; khung giờ chỉ hiện khi chọn Từng giờ, liệt kê theo giờ mở cửa và cho biết khung nào đã nhập.
+- **Tải mẫu Excel / CSV**: tệp đã có sẵn ngày đang chọn và các khung giờ, chỉ cần điền cột `ticket_count` rồi tải lên. Dòng để trống bị bỏ qua.
