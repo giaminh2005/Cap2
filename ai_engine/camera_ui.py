@@ -193,19 +193,26 @@ class TextLayer:
                             2 if bold else 1, cv2.LINE_AA)
             self.items = []
             return
-        img = _Image.fromarray(cv2.cvtColor(frame, cv2.COLOR_BGR2RGB))
-        draw = _ImageDraw.Draw(img, "RGBA")
+        # Chi chuyen sang Pillow TUNG O CHU nho (khong phai ca khung hinh) -> nhanh hon nhieu o 720p/1080p
+        fh, fw = frame.shape[:2]
         for text, (x, y), size, color, bg, bold, pad, anchor in self.items:
             f = _font(size, bold)
-            l, t, r, b = draw.textbbox((0, 0), text, font=f)
+            l, t, r, b = f.getbbox(text)
             w, h = r - l, b - t
             if anchor == "mt":
                 x -= w // 2
+            x0, y0 = max(0, x - pad), max(0, y - pad)
+            x1, y1 = min(fw, x + w + pad + 1), min(fh, y + h + pad + 1)
+            if x1 <= x0 or y1 <= y0:
+                continue
+            patch = _Image.fromarray(cv2.cvtColor(frame[y0:y1, x0:x1], cv2.COLOR_BGR2RGB))
+            draw = _ImageDraw.Draw(patch, "RGBA")
             if bg is not None:
                 rgba = (bg[2], bg[1], bg[0], 215) if len(bg) == 3 else (bg[2], bg[1], bg[0], bg[3])
-                draw.rounded_rectangle((x - pad, y - pad, x + w + pad, y + h + pad), radius=6, fill=rgba)
-            draw.text((x - l, y - t), text, font=f, fill=(color[2], color[1], color[0]))
-        frame[:] = cv2.cvtColor(_np.asarray(img), cv2.COLOR_RGB2BGR)
+                draw.rounded_rectangle((x - pad - x0, y - pad - y0, x + w + pad - x0, y + h + pad - y0),
+                                       radius=6, fill=rgba)
+            draw.text((x - l - x0, y - t - y0), text, font=f, fill=(color[2], color[1], color[0]))
+            frame[y0:y1, x0:x1] = cv2.cvtColor(_np.asarray(patch), cv2.COLOR_RGB2BGR)
         self.items = []
 
 

@@ -470,3 +470,56 @@ def test_morning_brief_and_ticket_reminder_once_per_day():
         assert "ticket-reminder" not in daily_report.run_due(db, day.replace(hour=21, minute=10))
     assert any("CHÀO BUỔI SÁNG" in t for t in SENT) and any("CUỐNG VÉ" in t for t in SENT)
     client.put("/config", headers=ADMIN, json={"open_time": "00:00", "close_time": "23:59"})
+
+
+def test_recipient_topics_filter_messages():
+    from backend.database import SessionLocal
+    from backend.routers.admin import active_recipients
+    r = client.post("/recipients", headers=ADMIN, json={"name": "Quản lý Hùng", "channel": "telegram",
+                                                         "address": "9001", "topics": ["red", "daily", "weekly"]}).json()
+    assert r["topics"] == ["red", "daily", "weekly"]
+    assert client.post("/recipients", headers=ADMIN, json={"name": "x", "address": "1", "topics": ["sai"]}).status_code == 400
+    meta = client.get("/recipients/topics").json()
+    assert "red" in meta["topics"] and meta["presets"]["Quản lý"] == ["red", "daily", "weekly"]
+    with SessionLocal() as db:
+        names_yellow = {x["name"] for x in active_recipients(db, "yellow")}
+        names_red = {x["name"] for x in active_recipients(db, "red")}
+    assert "Quản lý Hùng" not in names_yellow and "Quản lý Hùng" in names_red
+    r = client.put(f"/recipients/{r['id']}", headers=ADMIN, json={"topics": list(meta["topics"])}).json()
+    assert r["topics"] == list(meta["topics"])         # chon tat ca -> luu NULL, nhan moi loai tin
+    client.delete(f"/recipients/{r['id']}", headers=ADMIN)
+
+
+def test_weekly_report_compares_previous_week():
+    from backend import daily_report
+    from backend.database import SessionLocal
+    from backend.messages import weekly_message
+    from backend.timeutil import local_now
+    DOCS.clear()
+    res = client.post("/reports/weekly/send", headers=ADMIN).json()
+    assert res["date_from"] < res["date_to"] and res["sent_ok"] >= 0
+    pdf = client.get("/reports/weekly/pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    assert client.post("/reports/weekly/send").status_code == 401
+    with SessionLocal() as db:
+        today = local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        cur, prev = daily_report.weekly_summaries(db, today)
+        assert len(cur["by_day"]) == 7
+        from datetime import datetime as _dt
+        assert _dt.strptime(cur["date_from"], "%Y-%m-%d").weekday() == 0      # Thu 2
+        txt = weekly_message(cur, prev)
+        assert "BÁO CÁO TUẦN" in txt and "Tổng lượt vào cầu" in txt
+        monday = today + timedelta(days=(7 - today.weekday()) % 7 or 7, hours=8)
+        client.put("/config", headers=ADMIN, json={"open_time": "07:00", "close_time": "21:30"})
+        assert "weekly" in daily_report.run_due(db, monday)
+        assert "weekly" not in daily_report.run_due(db, monday + timedelta(hours=1))
+        client.put("/config", headers=ADMIN, json={"open_time": "00:00", "close_time": "23:59"})
+
+
+def test_sheets_auto_sync_skips_when_not_configured(monkeypatch):
+    from backend import sheets_auto
+    monkeypatch.setattr(sheets_auto, "CONF_FILE", "/khong/co.json")
+    monkeypatch.setattr(sheets_auto, "KEY_FILE", "/khong/co_key.json")
+    monkeypatch.delenv("GOOGLE_SHEETS_ID", raising=False)
+    assert sheets_auto.load_conf()["configured"] is False
+    assert sheets_auto.auto_sync_after_report() == "" and sheets_auto.sync_now() == "chưa cấu hình"

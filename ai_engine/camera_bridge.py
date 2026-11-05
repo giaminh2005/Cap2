@@ -65,7 +65,7 @@ except ImportError:
     print("Chưa cài ultralytics. Chạy: pip install ultralytics")
     sys.exit(1)
 
-from camera_backend import open_camera
+from camera_backend import LatestFrameReader, open_camera
 from camera_ui import TextLayer, draw_person_box, panel_lines, vietnamese_text_supported
 from crowd_counter import AlertLevelTracker, CameraThresholds
 from group_detector import GroupDetector
@@ -322,6 +322,8 @@ def parse_args(argv=None):
     ap.add_argument("--model", default=None)
     ap.add_argument("--imgsz", type=int, default=640,
                     help="Kich thuoc anh dua vao YOLO. 960 hoac 1280 dem tot hon nguoi o xa / dong (cham hon)")
+    ap.add_argument("--max-width", type=int, default=1280,
+                    help="Thu nho khung hinh rong hon muc nay truoc khi xu ly (1080p -> 1280). 0 = giu nguyen")
     ap.add_argument("--conf", type=float, default=0.35, help="Nguong tin cay phat hien nguoi")
     ap.add_argument("--tracker", default=os.path.join(os.path.dirname(os.path.abspath(__file__)),
                                                       "trackers", "smartcau_botsort.yaml"),
@@ -389,7 +391,12 @@ def main():
                                    quality_gate=not args.no_face_gate)
     model = YOLO(args.model)
     line = load_line(cam)
-    cap = open_camera(args.source)
+    def open_src(warm=2.0):
+        c = open_camera(args.source, warmup_sec=warm)
+        # webcam / RTSP: doc o luong rieng, luon lay khung MOI NHAT (het tre hinh khi AI cham)
+        return c if args.is_file or not c.isOpened() else LatestFrameReader(c)
+
+    cap = open_src()
     if not cap.isOpened():
         print(f"Không mở được camera/video: {args.source}")
         sys.exit(1)
@@ -413,6 +420,7 @@ def main():
     local_in = local_out = facade_total = 0
     prev_level = "OK"
     fps, frames, fps_t0 = 0.0, 0, time.time()
+    ai_ms = 0.0
     layer = TextLayer()
     source_label = str(args.source) if not isinstance(args.source, str) or "@" not in args.source \
         else args.source.split("@")[-1]
@@ -432,7 +440,7 @@ def main():
             while True:
                 cap.release()
                 time.sleep(RECONNECT_SEC)
-                cap = open_camera(args.source, warmup_sec=1.0)
+                cap = open_src(1.0)
                 if cap.isOpened() and cap.read()[0]:
                     break
                 if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -446,10 +454,15 @@ def main():
         frames += 1
         if now - fps_t0 >= 2.0:
             fps, frames, fps_t0 = frames / (now - fps_t0), 0, now
+        if args.max_width and frame.shape[1] > args.max_width:
+            scale = args.max_width / frame.shape[1]
+            frame = cv2.resize(frame, (args.max_width, int(frame.shape[0] * scale)), interpolation=cv2.INTER_AREA)
         fh, fw = frame.shape[:2]
 
+        t_ai = time.time()
         results = model.track(frame, persist=True, classes=[0], conf=args.conf, imgsz=args.imgsz,
                               tracker=args.tracker, verbose=False)[0]
+        ai_ms = 0.9 * ai_ms + 0.1 * (time.time() - t_ai) * 1000
         out = frame.copy()
         draw_line_overlay(out, layer, line)
 
@@ -555,7 +568,7 @@ def main():
         prev_level = level
 
         draw_hud(out, layer, cam, state, level, thresholds, local_in, local_out, facade_total, fps, api_ok,
-                 groups.current_size, ai_status)
+                 groups.current_size, ai_status or f"AI {ai_ms:.0f} ms/khung")
         layer.render(out)
         cv2.imshow(window, out)
         key = cv2.waitKey(1) & 0xFF

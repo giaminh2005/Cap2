@@ -199,3 +199,20 @@ def resend_daily(date: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Ngày phải có dạng YYYY-MM-DD.")
     r = generate(db, day, send=True, sync_send=True)
     return {"date": r.date, "sent_at": iso(r.sent_at), "delivery": r.delivery}
+
+
+@router.get("/weekly/pdf")
+def weekly_pdf(db: Session = Depends(get_db)):
+    """PDF bao cao tuan vua qua (Thu 2 - Chu nhat)."""
+    from ..daily_report import weekly_summaries
+    from ..report_export import to_pdf
+    cur, _ = weekly_summaries(db, local_now().replace(hour=0, minute=0, second=0, microsecond=0))
+    return Response(to_pdf(cur), media_type="application/pdf",
+                    headers={"Content-Disposition": f'attachment; filename="bao_cao_tuan_{cur["date_from"]}_{cur["date_to"]}.pdf"'})
+
+
+@router.post("/weekly/send", dependencies=[Depends(require_manager)])
+def send_weekly_now(db: Session = Depends(get_db)):
+    """Gui ngay bao cao tuan vua qua (binh thuong tu gui sang thu Hai)."""
+    from ..daily_report import send_weekly
+    return send_weekly(db, sync_send=True)
