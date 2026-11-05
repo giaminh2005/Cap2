@@ -381,3 +381,18 @@ def test_wait_buckets():
     from backend.routers.insights import wait_bucket
     assert wait_bucket(1) == "Dưới 3 phút" and wait_bucket(4) == "3–5 phút" and wait_bucket(9) == "Trên 5 phút"
     assert wait_bucket(None) is None
+
+
+# ------------------------------------------------- bang LED mascot
+def test_display_state_and_led_page():
+    client.post("/occupancy", json={"count": 23, "status": "CRITICAL"})
+    d = client.get("/display/state").json()
+    assert d["level"] == "CRITICAL" and d["stale"] is False
+    assert {"onbridge", "dem", "capacity", "wait_label", "utc_offset_hours"} <= set(d)
+    page = client.get("/led/")
+    assert page.status_code == 200 and "led.js" in page.text
+    assert client.get("/led/led.js").status_code == 200
+    v = client.get("/led/media/than_idle.webm")
+    assert v.status_code == 200 and len(v.content) > 10000
+    for n in (1, 2, 3, 4):
+        assert client.get(f"/led/media/scene{n}.webm").status_code == 200

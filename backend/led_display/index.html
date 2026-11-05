@@ -1,0 +1,54 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chùa Cầu · Bảng thông tin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Cormorant+Garamond:wght@600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="led.css">
+</head>
+<body class="lvl-green">
+  <!-- Phong nen: 2 lop video de cross-fade -->
+  <div id="bg">
+    <video id="bgA" class="bgv show" muted playsinline preload="auto"></video>
+    <video id="bgB" class="bgv" muted playsinline preload="auto"></video>
+    <div id="tint"></div>
+    <div id="vignette"></div>
+  </div>
+
+  <header id="top">
+    <div class="brand"><span class="mark"></span>CHÙA CẦU · HỘI AN</div>
+    <div id="sceneName"></div>
+    <div id="clock">--:--</div>
+  </header>
+
+  <!-- Bien bao song ngu: hien NGAY khi doi muc (khong cho mascot) -->
+  <section id="sign">
+    <div id="level-chip-big"></div>
+    <div id="count"><span id="countNum">0</span><span id="countCap">/ 20</span></div>
+    <div class="count-label">NGƯỜI TRÊN CẦU · PEOPLE ON THE BRIDGE</div>
+    <div class="rule"></div>
+    <div id="msgVi"></div>
+    <div id="msgEn"></div>
+    <div id="wait"></div>
+  </section>
+
+  <!-- Mascot Linh Than + loi thoai + chip so lieu -->
+  <section id="stage">
+    <div id="mascot"></div>
+    <div id="bubbleWrap">
+      <div id="bubble"><div id="bubbleText"></div></div>
+      <div id="chips">
+        <span id="chipCount" class="chip"></span>
+        <span id="chipLevel" class="chip lvl"></span>
+        <span id="chipOffline" class="chip off" hidden>● mất kết nối</span>
+      </div>
+    </div>
+  </section>
+
+  <aside id="debug" hidden></aside>
+  <div id="tapToStart" hidden>Chạm để bắt đầu</div>
+  <script src="led.js"></script>
+</body>
+</html>

@@ -97,6 +97,15 @@ Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có t
 - Kết quả có độ tin cậy dưới 70% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
 - Hệ thống không lưu ảnh hay đặc trưng khuôn mặt; khung hình chỉ xử lý trong bộ nhớ.
 
+## Bảng LED tại đầu cầu (mascot Linh Thân)
+
+- Mở **http://127.0.0.1:8000/led/** bằng Chrome hoặc Edge trên máy đặt ở đầu cầu, nhấn **F11** để toàn màn hình. Nếu máy LED khác máy chủ, thay `127.0.0.1` bằng IP của máy chủ. Trang này không cần đăng nhập.
+- Linh Thân chào khách, nhắc đi chậm khi Vàng, giơ tay ngăn khi Đỏ, cúi chào cảm ơn khi hết quá tải. Câu thoại chọn ngẫu nhiên, không lặp câu vừa nói, tự đổi "Chào buổi sáng / chiều / tối".
+- **Phông nền theo giờ:** ban ngày (06:00–17:30) dùng cảnh 1, xen cảnh 4 mỗi 5 phút; ban đêm dùng cảnh 3, xen cảnh 2. Mức Vàng thêm tông ấm. Mức Đỏ chạy **tour 4 cảnh**, mỗi cảnh 30 giây, có thuyết minh. Đổi cảnh bằng hiệu ứng mờ chéo 0,8 giây đúng lúc video hết vòng lặp.
+- `?scene=3` khóa một cảnh; `?debug=1` hoặc phím **D** mở bảng giả lập Xanh / Vàng / Đỏ, +1 khách, chọn cảnh.
+- Muốn đổi câu thoại, giờ ngày/đêm, thời lượng: sửa `CONFIG` ở đầu tệp `backend/led_display/led.js`. Clip Linh Khuyển (khi có): thả tệp vào `backend/led_display/media/` rồi điền tên ở `CONFIG.clips.khuyen`, mức Đỏ sẽ tự đổi sang Linh Khuyển.
+- Tệp gốc: `media/mascot/`, `media/phong_nen/`.
+
 ## Tính năng thông minh trên giao diện
 
 - **Sơ đồ cầu trực tiếp**: mỗi chấm là một người đang trên cầu, màu theo mức cảnh báo, kèm tốc độ vào/ra mỗi phút.

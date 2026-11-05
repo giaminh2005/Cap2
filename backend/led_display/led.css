@@ -1,0 +1,84 @@
+[hidden] { display:none !important; }
+:root { --green:#3FBF7A; --yellow:#F0B43A; --red:#E5473A; --lvl: var(--green);
+        --ink:#FFF8EC; --serif:'Cormorant Garamond', Georgia, serif; --sans:'Be Vietnam Pro', system-ui, sans-serif; }
+* { box-sizing: border-box; }
+html, body { margin:0; height:100%; overflow:hidden; background:#0C0A09; color:var(--ink); font-family:var(--sans); }
+body.lvl-yellow { --lvl: var(--yellow); }
+body.lvl-red { --lvl: var(--red); }
+
+/* ---------- phong nen ---------- */
+#bg { position:fixed; inset:0; }
+.bgv { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:0; transition:opacity 800ms ease; }
+.bgv.show { opacity:1; }
+#tint { position:absolute; inset:0; pointer-events:none; opacity:0; transition:opacity 1.2s ease; mix-blend-mode:multiply; }
+body.lvl-yellow #tint { opacity:1; background:linear-gradient(180deg, rgba(255,186,90,.30), rgba(255,150,40,.38)); }
+body.lvl-yellow.night #tint { background:linear-gradient(180deg, rgba(255,160,40,.35), rgba(220,110,10,.45)); }
+#vignette { position:absolute; inset:0; pointer-events:none;
+  background: radial-gradient(ellipse at 30% 60%, transparent 45%, rgba(0,0,0,.55) 100%),
+              linear-gradient(180deg, rgba(0,0,0,.45) 0%, transparent 18%, transparent 70%, rgba(0,0,0,.55) 100%); }
+body.lvl-red #vignette { animation: redPulse 2.4s ease-in-out infinite; }
+@keyframes redPulse { 0%,100% { box-shadow: inset 0 0 120px 20px rgba(229,71,58,.55); } 50% { box-shadow: inset 0 0 200px 50px rgba(229,71,58,.75); } }
+
+/* ---------- thanh tren ---------- */
+#top { position:fixed; top:0; left:0; right:0; display:flex; align-items:center; justify-content:space-between;
+       padding:2.2vh 3vw; font-size:1.6vh; letter-spacing:.3em; font-weight:600; text-shadow:0 1px 6px rgba(0,0,0,.6); }
+.brand { display:flex; align-items:center; gap:12px; color:#E9D3A3; }
+.mark { width:10px; height:10px; transform:rotate(45deg); background:#C9A45C; display:inline-block; }
+#sceneName { font-family:var(--serif); letter-spacing:.05em; font-size:2.4vh; font-weight:600; font-style:italic; opacity:.9; }
+#clock { font-variant-numeric:tabular-nums; letter-spacing:.12em; font-size:2.2vh; }
+
+/* ---------- bien bao ---------- */
+#sign { position:fixed; right:3vw; top:11vh; width:min(36vw, 640px); padding:3.4vh 2.4vw 3vh; text-align:center;
+        background:rgba(14,11,9,.62); backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+        border:1px solid rgba(255,255,255,.12); border-top:4px solid var(--lvl); transition:border-color .3s; }
+#level-chip-big { display:inline-block; padding:.6vh 1.2vw; font-size:1.7vh; font-weight:700; letter-spacing:.25em;
+                  color:#111; background:var(--lvl); transition:background .3s; }
+#count { margin-top:2.2vh; font-weight:600; line-height:1; font-variant-numeric:tabular-nums; color:var(--lvl);
+         text-shadow:0 0 30px color-mix(in srgb, var(--lvl) 45%, transparent); transition:color .3s; }
+#countNum { font-size:13vh; } #countCap { font-size:4.4vh; opacity:.8; margin-left:.4vw; }
+.count-label { font-size:1.35vh; letter-spacing:.32em; opacity:.75; margin-top:1vh; }
+.rule { width:60px; height:1px; background:var(--lvl); opacity:.6; margin:2.4vh auto; }
+#msgVi { font-size:3.1vh; font-weight:700; letter-spacing:.03em; line-height:1.25; }
+#msgEn { font-size:2.2vh; opacity:.85; margin-top:1vh; letter-spacing:.06em; }
+#wait { font-size:1.9vh; margin-top:2vh; color:var(--lvl); font-weight:600; letter-spacing:.08em; min-height:2vh; }
+body.lvl-red #sign { animation: signPulse 1.6s ease-in-out infinite; }
+@keyframes signPulse { 50% { box-shadow: 0 0 0 2px rgba(229,71,58,.55), 0 0 60px rgba(229,71,58,.35); } }
+
+/* ---------- mascot ---------- */
+#stage { position:fixed; left:2vw; bottom:0; height:78vh; display:flex; align-items:flex-end; gap:0; pointer-events:none; }
+#mascot { position:relative; height:100%; aspect-ratio: 644 / 720; transform:translateX(0); opacity:1;
+          transition: transform 1.3s cubic-bezier(.22,.8,.3,1), opacity 1.3s ease; filter: drop-shadow(0 18px 24px rgba(0,0,0,.45)); }
+#mascot video { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; opacity:0; }
+#mascot video.on { opacity:1; }
+#mascot.out { transform:translateX(-75vw); opacity:0; }
+#mascot.walking { animation: bob .45s ease-in-out infinite; }
+@keyframes bob { 50% { translate: 0 -1.2vh; } }
+
+#bubbleWrap { margin-bottom:16vh; margin-left:-3vw; max-width:48vw; }
+#bubble { position:relative; background:rgba(255,250,240,.96); color:#2A211B; padding:2vh 1.6vw; border-radius:18px;
+          font-size:2.6vh; line-height:1.4; font-weight:500; box-shadow:0 12px 30px rgba(0,0,0,.35);
+          opacity:0; transform:translateY(10px) scale(.97); transition:opacity .35s ease, transform .35s ease; }
+#bubble.show { opacity:1; transform:none; }
+#bubble::before { content:""; position:absolute; left:-14px; top:24px; border:10px solid transparent;
+                  border-right:16px solid rgba(255,250,240,.96); border-left:0; }
+#bubbleText { display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; }
+#chips { display:flex; gap:10px; margin-top:1.6vh; flex-wrap:wrap; }
+.chip { font-size:1.7vh; font-weight:600; padding:.6vh .9vw; border-radius:999px; background:rgba(14,11,9,.7);
+        border:1px solid rgba(255,255,255,.18); letter-spacing:.04em; white-space:nowrap; }
+.chip.lvl { background:var(--lvl); color:#111; border-color:transparent; letter-spacing:.14em; }
+.chip.off { background:rgba(120,30,20,.85); }
+
+/* ---------- debug ---------- */
+#debug { position:fixed; left:12px; top:9vh; width:280px; background:rgba(0,0,0,.82); border:1px solid #444; padding:12px;
+         font:12px/1.5 ui-monospace, Consolas, monospace; color:#ddd; z-index:9; }
+#debug b { color:#fff; } #debug button { margin:3px 3px 0 0; font:inherit; padding:3px 7px; cursor:pointer; }
+#debug .row { margin-top:8px; }
+#tapToStart { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; font-size:3vh;
+              background:rgba(0,0,0,.5); cursor:pointer; letter-spacing:.2em; z-index:10; }
+
+/* man hinh doc / nho: bien bao xuong duoi */
+@media (max-aspect-ratio: 4/3) {
+  #sign { left:4vw; right:4vw; width:auto; top:9vh; }
+  #stage { height:52vh; }
+  #bubbleWrap { margin-bottom:10vh; max-width:56vw; }
+}
