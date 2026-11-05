@@ -19,6 +19,7 @@ Vong doi su co (FR-07):
 """
 
 from datetime import datetime
+from html import escape
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -26,7 +27,7 @@ from pydantic import BaseModel
 from sqlalchemy import Boolean, Column, DateTime, Integer, String
 from sqlalchemy.orm import Session
 
-from .. import notify
+from .. import messages, notify
 from ..database import Base, get_db
 from ..models import SystemEvent, get_config, log_audit
 from ..schemas import SystemEventIn
@@ -45,7 +46,11 @@ EVENT_LABELS = {
     "CAMERA_RESTORED": "Camera hoạt động lại",
     "GATE_CLOSED": "Tạm dừng cho khách lên",
     "GATE_REOPENED": "Cho khách lên lại",
+    "MORNING_BRIEF": "Bản tin đầu ngày",
+    "TICKET_REMINDER": "Nhắc nhập số cuống vé",
 }
+TOPIC_OF = {"WARNING": "yellow", "CRITICAL_ALERT": "red", "CRITICAL_CLEARED": "red", "GROUP_DETECTED": "group",
+            "CAMERA_LOST": "camera", "CAMERA_RESTORED": "camera"}   # loai tin -> nguoi nhan chon nhan
 ALWAYS_NOTIFY = {"CRITICAL_ALERT", "CAMERA_LOST"}          # gui ca ngoai gio mo cua
 NOTIFY_IN_HOURS = {"WARNING", "GROUP_DETECTED", "CAMERA_RESTORED"}
 
@@ -87,15 +92,27 @@ def _incident_json(i: Incident) -> dict:
             "duration_seconds": _secs(i.opened_at, i.closed_at or datetime.utcnow())}
 
 
+def buttons(incident: Optional[Incident] = None):
+    """Nut bam duoi tin Telegram (bot xu ly, xem backend/telegram_bot.py)."""
+    rows = []
+    if incident is not None and incident.closed_at is None and incident.acked_at is None:
+        rows.append([("✅ Đã xử lý", f"ack:{incident.id}")])
+    rows.append([("📍 Tình hình", "status"), ("📊 Hôm nay", "today")])
+    if notify.WEB_URL:
+        rows.append([("🖥 Mở trang quản lý", notify.WEB_URL)])
+    return rows
+
+
 def _close(db, inc: Incident, reason: str, by: str):
     inc.closed_at = datetime.utcnow()
     inc.close_reason, inc.closed_by = reason, by
-    dur = _secs(inc.opened_at, inc.closed_at) or 0
-    handled = (f"xác nhận bởi {inc.acked_by} sau {_secs(inc.opened_at, inc.acked_at)} giây"
-               if inc.acked_at else "chưa có người xác nhận")
-    return (f"[SmartCau AI] SỰ CỐ #{inc.id} ĐÃ ĐÓNG ({'tự động' if reason == 'auto' else 'thủ công bởi ' + by}). "
-            f"Bắt đầu {to_local(inc.opened_at):%H:%M %d/%m}, kéo dài {dur // 60} phút {dur % 60} giây, "
-            f"cao nhất {inc.peak_count} người, {handled}.")
+    try:
+        return messages.incident_closed_message(db, inc, reason, by)
+    except Exception as e:  # tin dep loi -> van gui tin ngan
+        print(f"[alerts] Không lập được tin đóng sự cố: {e}")
+        dur = _secs(inc.opened_at, inc.closed_at) or 0
+        return (f"✅ SỰ CỐ #{inc.id} ĐÃ ĐÓNG. Bắt đầu {to_local(inc.opened_at):%H:%M %d/%m}, "
+                f"kéo dài {dur // 60} phút {dur % 60} giây, cao nhất {inc.peak_count} người.")
 
 
 @router.post("/system_events", dependencies=[Depends(require_api_key)])
@@ -103,8 +120,9 @@ def create_system_event(event: SystemEventIn, db: Session = Depends(get_db)):
     row = SystemEvent(event_type=event.event_type, count=event.count, message=event.message,
                       camera_id=event.camera_id)
     db.add(row)
-    text = event.message or f"[SmartCau AI] {EVENT_LABELS.get(event.event_type, event.event_type)}"
+    text = escape(event.message or f"[SmartCau AI] {EVENT_LABELS.get(event.event_type, event.event_type)}")
     incident_id = None
+    inc = None
 
     if event.event_type == "CRITICAL_ALERT":
         inc = _open_incident(db)
@@ -123,13 +141,19 @@ def create_system_event(event: SystemEventIn, db: Session = Depends(get_db)):
             text = _close(db, inc, "auto", "hệ thống")
             incident_id = inc.id
     db.commit()
+    if event.event_type != "CRITICAL_CLEARED":
+        try:   # tin dinh dang dep kem tinh hinh hien tai; loi thi dung tin goc cua camera
+            text = messages.event_message(db, event.event_type, event.count, event.camera_id, inc) or text
+        except Exception as e:
+            print(f"[alerts] Không lập được tin {event.event_type}: {e}")
 
     send = event.event_type in ALWAYS_NOTIFY or (
         event.event_type in NOTIFY_IN_HOURS and is_open_now(get_config(db)))
     if event.event_type == "CRITICAL_CLEARED" and incident_id is not None:
         send = True
     if send:
-        notify.deliver_async(active_recipients(db), text)
+        notify.deliver_async(active_recipients(db, TOPIC_OF.get(event.event_type)), text,
+                             buttons(inc if event.event_type == "CRITICAL_ALERT" else None))
     return {"saved": True, "id": row.id, "incident_id": incident_id, "notified": send}
 
 
@@ -164,14 +188,28 @@ def ack_incident(incident_id: int, payload: AckIn = AckIn(), p: Principal = Depe
     inc = db.query(Incident).filter(Incident.id == incident_id).first()
     if inc is None:
         raise HTTPException(status_code=404, detail="Không tìm thấy sự cố.")
-    if inc.acked_at is None:
-        inc.acked_at = datetime.utcnow()
-        inc.acked_by = p.display
-    if payload.note:
-        inc.note = payload.note
-    db.commit()
+    acknowledge(db, inc, p.display, payload.note, via="web")
     db.refresh(inc)
     return _incident_json(inc)
+
+
+def acknowledge(db, inc: Incident, who: str, note: str = "", via: str = "web") -> bool:
+    """Nguoi truc nhan xu ly su co (tu web hoac nut Telegram). Lan dau -> bao cho moi nguoi nhan."""
+    first = inc.acked_at is None
+    if first:
+        inc.acked_at = datetime.utcnow()
+        inc.acked_by = who
+    if note:
+        inc.note = note
+    db.commit()
+    if first and inc.closed_at is None:
+        secs = _secs(inc.opened_at, inc.acked_at)
+        notify.deliver_async(active_recipients(db, "red"),
+                             f"🙋 <b>{escape(who)}</b> đã nhận xử lý <b>sự cố #{inc.id}</b> "
+                             f"sau {secs // 60} phút {secs % 60} giây"
+                             f"{' (qua Telegram)' if via == 'telegram' else ''}.\n"
+                             "Các bạn khác không cần ra điều tiết thêm.", buttons())
+    return first
 
 
 @router.post("/incidents/{incident_id}/close")
@@ -182,7 +220,7 @@ def close_incident(incident_id: int, p: Principal = Depends(require_staff), db: 
     if inc.closed_at is None:
         text = _close(db, inc, "manual", p.display)
         db.commit()
-        notify.deliver_async(active_recipients(db), text)
+        notify.deliver_async(active_recipients(db, "red"), text, buttons())
     db.refresh(inc)
     return _incident_json(inc)
 

@@ -91,6 +91,51 @@ def extract_keypoints(results, idx):
         return None, None
 
 
+class AsyncEngine:
+    """Chay DeepFace o LUONG NEN de vong lap camera khong phai cho (DeepFace ~0.1-0.5 giay/lan tren CPU).
+
+    update() gui 1 yeu cau phan tich (neu track do chua co yeu cau dang cho) va tra ve
+    ket qua MOI NHAT da co; "_seq" tang moi khi co ket qua moi."""
+
+    def __init__(self, engine, max_pending: int = 3):
+        import queue
+        import threading
+        self.engine, self.max_pending = engine, max_pending
+        self.q = queue.Queue()
+        self.results, self.pending = {}, set()
+        self.lock = threading.Lock()
+        threading.Thread(target=self._run, daemon=True, name="deepface").start()
+
+    def _run(self):
+        while True:
+            op, tid, args = self.q.get()
+            if op == "forget":
+                self.engine.forget(tid)
+                with self.lock:
+                    self.results.pop(tid, None)
+                continue
+            try:
+                res = dict(self.engine.update(tid, *args[:2], keypoints=args[2], kp_conf=args[3]))
+            except Exception as e:   # 1 khung loi khong lam dung nhan dien
+                print(f"[nhận diện] Lỗi phân tích: {e}")
+                res = None
+            with self.lock:
+                self.pending.discard(tid)
+                if res is not None:
+                    res["_seq"] = self.results.get(tid, {}).get("_seq", 0) + 1
+                    self.results[tid] = res
+
+    def update(self, tid, frame, box, keypoints=None, kp_conf=None) -> dict:
+        with self.lock:
+            if tid not in self.pending and len(self.pending) < self.max_pending:
+                self.pending.add(tid)
+                self.q.put(("update", tid, (frame, box, keypoints, kp_conf)))   # frame khong bi ve len -> khong can copy
+            return self.results.get(tid) or {"ready": False, "n_votes": 0, "_seq": 0}
+
+    def forget(self, tid):
+        self.q.put(("forget", tid, None))
+
+
 @dataclass
 class _Track:
     first_seen: float
@@ -102,6 +147,7 @@ class _Track:
     last_reject: Optional[str] = None
     done: bool = False
     saved: Optional[dict] = None
+    last_seq: int = -1
 
 
 class VisitorProfiler:
@@ -119,7 +165,7 @@ class VisitorProfiler:
                  gone_sec: float = 1.5, forget_sec: float = 30.0, quality_gate: bool = True):
         if engine is None:
             from demographics_engine import DemographicsEngine
-            engine = DemographicsEngine(enable_region=with_origin)
+            engine = AsyncEngine(DemographicsEngine(enable_region=with_origin))
         self.engine, self.post, self.with_origin, self.camera_id = engine, post, with_origin, camera_id
         self.analyze_interval, self.give_up_sec = analyze_interval, give_up_sec
         self.gone_sec, self.forget_sec = gone_sec, forget_sec
@@ -150,8 +196,11 @@ class VisitorProfiler:
                 return
         t.last_reject = None
         t.info = self.engine.update(tid, frame, box, keypoints=keypoints, kp_conf=kp_conf)
+        seq = t.info.get("_seq")
+        fresh = seq is None or seq != t.last_seq      # engine chay nen: chi bo phieu khu vuc khi co ket qua MOI
+        t.last_seq = seq if seq is not None else t.last_seq
         region, conf = t.info.get("region"), float(t.info.get("region_confidence") or 0)
-        if region:
+        if region and fresh:
             t.region_votes[region] = t.region_votes.get(region, 0.0) + max(conf, 0.05)
         if t.entered_at is not None and t.info.get("ready"):
             self._save(tid, t)

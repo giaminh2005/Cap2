@@ -30,7 +30,7 @@ import os
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 
-from . import daily_report, models  # noqa: F401  (dang ky cac bang voi Base)
+from . import daily_report, models, telegram_bot  # noqa: F401  (dang ky cac bang voi Base)
 from .database import SessionLocal, ensure_schema
 from .routers import accounts, admin, alerts, bridge, counting, demographics, display, insights, reports, tickets
 from .security import ADMIN_API_KEY, API_KEY
@@ -61,6 +61,7 @@ with SessionLocal() as _db:
 def _start_background_jobs():
     # Bao cao ngay tu dong sau gio dong cua (FR-11). Tat: SMARTCAU_DISABLE_SCHEDULER=1
     daily_report.start_scheduler()
+    telegram_bot.start()          # bot tra loi /tinhhinh, /homnay va nut "Da xu ly" tren Telegram
 
 
 @app.get("/health", tags=["He thong"])

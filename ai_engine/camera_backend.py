@@ -24,6 +24,7 @@ thich nguoc (khong lam hong cac lenh nguoi dung da quen):
 
 import argparse
 import platform
+import threading
 import time
 
 import cv2
@@ -63,6 +64,63 @@ def open_camera(source, warmup_sec: float = 2.0) -> "cv2.VideoCapture":
     if warmup_sec > 0:
         time.sleep(warmup_sec)
     return cap
+
+
+class LatestFrameReader:
+    """Doc webcam / RTSP o LUONG RIENG va chi giu khung hinh MOI NHAT.
+
+    Khi xu ly AI cham hon toc do camera, VideoCapture thuong de don khung hinh
+    trong bo dem -> hinh tren man hinh tre vai giay so voi thuc te ("lag").
+    Lop nay bo cac khung cu, vong lap luon xu ly khung hinh vua chup.
+    Dung giong VideoCapture: read(), isOpened(), release(), get(), set().
+    """
+
+    def __init__(self, cap):
+        self.cap = cap
+        try:
+            cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
+        except cv2.error:
+            pass
+        self._frame, self._ok, self._seq, self._used = None, True, 0, 0
+        self._cond = threading.Condition()
+        self._stop = False
+        self._t = threading.Thread(target=self._run, daemon=True, name="camera-reader")
+        self._t.start()
+
+    def _run(self):
+        while not self._stop:
+            ok, frame = self.cap.read()
+            with self._cond:
+                self._ok = ok
+                if ok:
+                    self._frame, self._seq = frame, self._seq + 1
+                self._cond.notify_all()
+            if not ok:
+                time.sleep(0.05)
+                if not self.cap.isOpened():
+                    break
+
+    def read(self, timeout: float = 2.0):
+        with self._cond:
+            if self._seq == self._used:
+                self._cond.wait(timeout)
+            if self._seq == self._used or not self._ok:
+                return False, None
+            self._used = self._seq
+            return True, self._frame
+
+    def isOpened(self):
+        return self.cap.isOpened()
+
+    def get(self, prop):
+        return self.cap.get(prop)
+
+    def set(self, prop, value):
+        return self.cap.set(prop, value)
+
+    def release(self):
+        self._stop = True
+        self.cap.release()
 
 
 def parse_camera_source(argv=None, default=0, description: str = "Camera SmartCau AI"):
