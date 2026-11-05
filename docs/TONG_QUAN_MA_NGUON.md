@@ -111,7 +111,8 @@ Chạy từ **thư mục gốc dự án** (có `backend/`, `frontend/`, `ai_engi
 | Cờ | Mặc định | Ý nghĩa |
 |---|---|---|
 | `--camera-id 1\|2` | bắt buộc | Chân cầu. Chỉ camera 1 gửi mức cảnh báo |
-| `--source` | `0` | Số webcam, đường dẫn video, hoặc `rtsp://...` |
+| `--source` | `0` | Webcam `0` (laptop) / `1`, `2` (USB); điện thoại `phone:<IP>` (IP Webcam), `droidcam:<IP>`; `http://...`, `rtsp://...`; tệp video. Xử lý ở `camera_backend.resolve_source`. Hướng dẫn: `docs/CAMERA_NGOAI.md` |
+| `--cam-res` | `1280x720` | Độ phân giải xin webcam USB |
 | `--api` | `SMARTCAU_API` hoặc `http://127.0.0.1:8000` | Địa chỉ máy chủ |
 | `--api-key` | — | Khóa camera nếu máy chủ đặt `SMARTCAU_API_KEY` |
 | `--no-demographics` | tắt | Tắt nhận diện giới tính / tuổi / nguồn khách (mặc định **bật**). `--demographics` vẫn được nhận (không làm gì) |
@@ -506,7 +507,7 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | Tệp | Thành phần chính |
 |---|---|
 | `camera_bridge.py` | Hằng: `API_BASE`, `STATE_POLL_SEC=1`, `CONFIG_POLL_SEC=15`, `REPORT_SEC=2`, `HEARTBEAT_SEC=5`, `ALERT_REPEAT_SEC=180`, `RECONNECT_SEC=3`, `OPENCV_FIX_MSG`, `MACHINE`, `LEVEL_VI`, `LEVEL_BGR`. Hàm: `_post`, `_get` (gọi HTTP đồng bộ, timeout 2 giây), lớp `Net` (gửi / đọc nền), `_line_path`, `load_line`, `draw_line_setup`, `draw_line_overlay`, `draw_hud`, `parse_args`, `main` (mở camera `open_src`, nạp DeepFace, tạo `VisitorProfiler`, vòng lặp: đọc khung → thu nhỏ → YOLO track → từng người: vạch / mặt tiền / nhóm / hồ sơ → gửi sự kiện → HUD → phím) |
-| `camera_backend.py` | `_pick_backend_for_platform` (Windows `CAP_DSHOW`, Linux `CAP_V4L2`, macOS `CAP_AVFOUNDATION`), `open_camera`, `LatestFrameReader`, `parse_camera_source` (cho camera cũ) |
+| `camera_backend.py` | `_pick_backend_for_platform` (Windows `CAP_DSHOW`, Linux `CAP_V4L2`, macOS `CAP_AVFOUNDATION`), `PHONE_APPS`, `resolve_source` (gõ tắt `phone:`/`droidcam:`/IP), `is_network_source`, `open_camera` (webcam xin 1280x720; luồng mạng dùng `CAP_FFMPEG`), `LatestFrameReader`, `parse_camera_source` (cho camera cũ) |
 | `camera_ui.py` | `draw_person_box`, `draw_info_panel`, `draw_status_bar`, `draw_capacity_banner`, `draw_gate_banner`, `draw_countdown`, font `_FONT_CANDIDATES`, `vietnamese_text_supported`, `TextLayer` (`text`, `measure`, `render`), `panel_lines` |
 | `line_crossing.py` | `LineCrossingCounter` (`p1`, `p2`, `bridge_point`, `signed_distance`, `update`, `save`, `load`), `foot_point`, `FacadeCounter` (`update`, `mark_crossed`, `collect`) |
 | `crowd_counter.py` | `CameraThresholds`, `AlertLevelTracker`, `STATUS_COLOR_BGR`, `STATUS_LABEL_VI`, `CrowdCounter` (YOLO / HOG, dùng ở bản demo cũ) |
@@ -522,6 +523,7 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | Tệp | Chạy | Làm gì |
 |---|---|---|
 | `kiem_tra_mang.py` | `python tools/kiem_tra_mang.py [http://IP:8000]` | `lan_ips`, `port_open`, `server_mode`, `client_mode` |
+| `tim_camera.py` | `python tools/tim_camera.py [phone:<IP> \| droidcam:<IP> \| rtsp://...]` | Dò webcam số 0–5 hoặc thử 1 luồng điện thoại; in độ phân giải, khung/giây, lệnh chạy; lưu ảnh thử vào `tools/anh_camera/` |
 | `simulate_bridge.py` | `python tools/simulate_bridge.py` | Gửi kịch bản vào / ra (`SCENARIO`) tới `/bridge/crossing` |
 | `seed_demo_data.py` | `python tools/seed_demo_data.py` | Tạo hồ sơ khách / lượt demo |
 | `google_sheets_sync.py` | gọi từ web / `sheets_auto` (hoặc `python tools/google_sheets_sync.py`) | `sync_all(api_base, sheet_id, creds_path)` |
@@ -619,6 +621,7 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 | Nguồn khách sai | Ước lượng thô từ chủng tộc | `visitor_profiler.py::REGION_TO_ORIGIN`, `ORIGIN_MIN_SHARE`, `region_mapping.py` |
 | Camera giật / chậm, `AI xx ms/khung` cao | Máy yếu | `--imgsz 480`, `--max-width`, `--no-origin`; `camera_bridge.py` vòng lặp; `camera_ui.py::TextLayer.render` |
 | Hình trễ so với thực tế | Bộ đệm webcam | `camera_backend.py::LatestFrameReader` |
+| Không mở được webcam USB / camera điện thoại | Sai số webcam, khác Wi-Fi, app chưa Start | `python tools/tim_camera.py`, `camera_backend.resolve_source`, `docs/CAMERA_NGOAI.md` |
 | Đếm sai vào / ra, đếm 2 lần | Vạch, hướng phía cầu, tracker mất ID | `line_crossing.py::LineCrossingCounter.update`, `camera_bridge.py::draw_line_setup`, `trackers/smartcau_botsort.yaml`, `--conf` |
 | Bấm phím kẻ vạch không ăn | Chưa click vào cửa sổ camera | `camera_bridge.py` (xử lý phím cuối vòng lặp, `on_main_mouse`) |
 | "MẤT KẾT NỐI SERVER" trên camera | Sai IP, tường lửa, backend chưa `--host 0.0.0.0` | `camera_bridge.py::Net`, `tools/kiem_tra_mang.py`, `docs/TRIEN_KHAI_NHIEU_MAY.md` |

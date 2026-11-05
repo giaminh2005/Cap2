@@ -65,7 +65,7 @@ except ImportError:
     print("Chưa cài ultralytics. Chạy: pip install ultralytics")
     sys.exit(1)
 
-from camera_backend import LatestFrameReader, open_camera
+from camera_backend import LatestFrameReader, is_network_source, open_camera, resolve_source
 from camera_ui import TextLayer, draw_person_box, panel_lines, vietnamese_text_supported
 from crowd_counter import AlertLevelTracker, CameraThresholds
 from group_detector import GroupDetector
@@ -312,7 +312,11 @@ def parse_args(argv=None):
     ap.add_argument("--api", default=None,
                     help="Dia chi may chu khi chay nhieu may, vd http://192.168.1.10:8000 (mac dinh SMARTCAU_API hoac 127.0.0.1)")
     ap.add_argument("--api-key", default=None, help="Khoa camera neu may chu dat SMARTCAU_API_KEY")
-    ap.add_argument("--source", default="0", help="Số webcam (0, 1...) hoặc đường dẫn video/RTSP")
+    ap.add_argument("--source", default="0",
+                    help="Webcam: 0 (laptop), 1, 2 (webcam USB). Điện thoại: phone:<IP> (IP Webcam), "
+                         "droidcam:<IP> (DroidCam), hoặc http://... / rtsp://... ; cũng nhận đường dẫn tệp video. "
+                         "Dò camera đang có: python tools/tim_camera.py")
+    ap.add_argument("--cam-res", default="1280x720", help="Độ phân giải xin webcam (mặc định 1280x720)")
     ap.add_argument("--demographics", action="store_true", help="(Mặc định đã bật, giữ để lệnh cũ vẫn chạy)")
     ap.add_argument("--no-demographics", action="store_true",
                     help="Tắt nhận diện giới tính / tuổi / nguồn khách, chỉ đếm người")
@@ -337,7 +341,12 @@ def parse_args(argv=None):
     args.demographics = not args.no_demographics
     if args.model is None:
         args.model = "yolov8n-pose.pt" if args.demographics else "yolov8n.pt"
-    args.source = int(args.source) if str(args.source).isdigit() else args.source
+    args.source = resolve_source(args.source)
+    try:
+        w, h = (int(v) for v in args.cam_res.lower().split("x"))
+        args.cam_res = (w, h)
+    except ValueError:
+        ap.error("--cam-res phải có dạng 1280x720")
     args.send_alerts = (args.camera_id == 1) and not args.no_alerts
     args.is_file = isinstance(args.source, str) and os.path.isfile(args.source)
     return args
@@ -392,13 +401,20 @@ def main():
     model = YOLO(args.model)
     line = load_line(cam)
     def open_src(warm=2.0):
-        c = open_camera(args.source, warmup_sec=warm)
+        c = open_camera(args.source, warmup_sec=warm, resolution=args.cam_res)
         # webcam / RTSP: doc o luong rieng, luon lay khung MOI NHAT (het tre hinh khi AI cham)
         return c if args.is_file or not c.isOpened() else LatestFrameReader(c)
 
     cap = open_src()
     if not cap.isOpened():
         print(f"Không mở được camera/video: {args.source}")
+        if is_network_source(args.source):
+            print("  - Điện thoại và máy này phải cùng mạng Wi-Fi; ứng dụng camera trên điện thoại đang bật (Start server).\n"
+                  "  - Thử mở địa chỉ trên bằng trình duyệt của máy này: thấy hình là đúng.\n"
+                  "  - IP Webcam: phone:<IP>  ·  DroidCam: droidcam:<IP>  (IP hiện trên màn hình ứng dụng).")
+        else:
+            print("  - Chạy: python tools/tim_camera.py  để xem số của từng camera (laptop thường là 0, webcam USB là 1).\n"
+                  "  - Tắt Zoom / Meet / ứng dụng Camera đang giữ webcam.")
         sys.exit(1)
     try:
         cv2.namedWindow(window, cv2.WINDOW_NORMAL)
