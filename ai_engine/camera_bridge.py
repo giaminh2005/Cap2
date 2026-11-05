@@ -305,6 +305,11 @@ def main():
     if args.demographics:
         import age_gender_estimator
         age_gender_estimator.DEFAULT_DETECTOR = args.face_detector
+        print(f"[CAMERA {cam}] Đang nạp DeepFace (lần đầu có thể mất 10–30 giây)...")
+        ok_df, _err = age_gender_estimator.deepface_status()
+        if not ok_df:
+            print(f"[CAMERA {cam}] DeepFace lỗi -> camera vẫn ĐẾM người bình thường nhưng KHÔNG nhận diện "
+                  "giới tính / tuổi. Sửa theo hướng dẫn ở trên rồi chạy lại.")
         profiler = VisitorProfiler(post=_post, with_origin=not args.no_origin, camera_id=cam,
                                    quality_gate=not args.no_face_gate)
         print(f"[CAMERA {cam}] Nhận diện giới tính, tuổi{'' if args.no_origin else ', trong/ngoài nước'}: BẬT.")

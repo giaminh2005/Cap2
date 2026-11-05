@@ -185,6 +185,44 @@ def calibrate_age(age: int) -> int:
 load_age_calibration()
 
 
+_DEEPFACE = None
+_DEEPFACE_ERROR = None
+
+
+def _load_deepface():
+    """Nap DeepFace 1 lan. Neu loi thi in DUNG loi goc (thuong la TensorFlow / tf-keras /
+    numpy chu khong phai thieu deepface) va huong dan sua - chi in 1 lan, khong lap moi khung hinh."""
+    global _DEEPFACE, _DEEPFACE_ERROR
+    if _DEEPFACE is not None or _DEEPFACE_ERROR is not None:
+        return _DEEPFACE
+    try:
+        from deepface import DeepFace
+        _DEEPFACE = DeepFace
+        return DeepFace
+    except Exception as e:  # ImportError, loi DLL cua TensorFlow, xung dot Keras 3...
+        import sys
+        import traceback
+        _DEEPFACE_ERROR = e
+        print("\n[LỖI NHẬN DIỆN] Không nạp được DeepFace, nên KHÔNG nhận diện giới tính / tuổi.")
+        print(f"  Python đang chạy: {sys.executable} (bản {sys.version.split()[0]})")
+        print(f"  Lỗi gốc: {type(e).__name__}: {e}")
+        print("  Chi tiết:")
+        traceback.print_exc(limit=3)
+        print("  Cách sửa thường gặp (xem README, mục 'DeepFace không nhận diện'):\n"
+              "   - 'No module named deepface'     -> pip install deepface (đúng .venv đang dùng)\n"
+              "   - 'No module named tensorflow'   -> pip install tensorflow tf-keras (Python 3.9–3.12)\n"
+              "   - 'DLL load failed' (Windows)    -> cài Microsoft Visual C++ Redistributable x64, rồi chạy lại\n"
+              "   - 'Keras 3' / 'tf_keras'         -> pip install tf-keras==<cùng số phiên bản với tensorflow>\n"
+              "   - lỗi numpy                      -> pip install \"numpy<2\"\n"
+              "  Kiểm tra nhanh: python -c \"from deepface import DeepFace; print('OK')\"\n")
+        return None
+
+
+def deepface_status():
+    """(san_sang, loi) - de camera_bridge bao ngay luc khoi dong."""
+    return _load_deepface() is not None, _DEEPFACE_ERROR
+
+
 def estimate_age_gender(image_bgr, detector_backend: str = None, include_race: bool = False) -> List[Dict]:
     """Tra ve danh sach dict, moi phan tu ung voi 1 khuon mat THAT phat
     hien duoc (da loc bo cac ket qua "gia"):
@@ -201,10 +239,8 @@ def estimate_age_gender(image_bgr, detector_backend: str = None, include_race: b
     nguyen tac su dung trong docstring cua region_mapping.py TRUOC khi
     bat tinh nang nay."""
     global _BACKEND_FALLBACK_TO_OPENCV
-    try:
-        from deepface import DeepFace
-    except ImportError:
-        print("Chua cai deepface. Chay: pip install deepface tf-keras")
+    DeepFace = _load_deepface()
+    if DeepFace is None:
         return []
 
     if image_bgr is None or image_bgr.size == 0:

@@ -49,6 +49,24 @@ pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python
 pip install "opencv-python>=4.9,<5"
 ```
 
+### DeepFace không nhận diện
+
+Camera vẫn đếm người nhưng không hiện giới tính / tuổi, và in **[LỖI NHẬN DIỆN]** kèm lỗi gốc. Kiểm tra trong đúng `.venv`:
+```powershell
+python -c "import sys; print(sys.executable)"
+python -c "import tensorflow as tf; print('TF', tf.__version__)"
+python -c "from deepface import DeepFace; print('DeepFace OK')"
+```
+| Lỗi | Cách sửa |
+|---|---|
+| `No module named 'deepface'` | `.venv` chưa kích hoạt hoặc cài nhầm Python khác: kích hoạt `.venv` rồi `pip install deepface` |
+| `No module named 'tensorflow'` / không cài được tensorflow | `pip install tensorflow tf-keras`; nếu pip báo không có bản phù hợp thì dùng Python 3.11 |
+| `DLL load failed` (Windows) | Cài **Microsoft Visual C++ Redistributable x64** (aka.ms/vs/17/release/vc_redist.x64.exe), khởi động lại máy |
+| Lỗi nhắc tới `Keras 3` / `tf_keras` | `pip install tf-keras==` + đúng số phiên bản tensorflow (vd tensorflow 2.17.1 → `tf-keras==2.17.0`) |
+| Lỗi nhắc tới `numpy` | `pip install "numpy<2"` |
+
+Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có thể kéo OpenCV 5 về lại).
+
 ## Chạy hệ thống (mọi lệnh chạy từ thư mục gốc `Cap2/`)
 
 | Cửa sổ | Lệnh | Ghi chú |
