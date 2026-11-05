@@ -83,3 +83,15 @@ def test_save_and_load(tmp_path):
 
 def test_foot_point():
     assert foot_point((100, 50, 40, 200), 400, 500) == (0.3, 0.5)
+
+
+def test_resolve_camera_source_shortcuts():
+    from camera_backend import is_network_source, resolve_source
+    assert resolve_source("0") == 0 and resolve_source("1") == 1
+    assert resolve_source("phone:192.168.1.5") == "http://192.168.1.5:8080/video"
+    assert resolve_source("droidcam:192.168.1.5") == "http://192.168.1.5:4747/video"
+    assert resolve_source("phone:192.168.1.5:9000") == "http://192.168.1.5:9000/video"
+    assert resolve_source("192.168.1.5:8080") == "http://192.168.1.5:8080/video"
+    assert resolve_source("rtsp://u:p@10.0.0.2/s1") == "rtsp://u:p@10.0.0.2/s1"
+    assert resolve_source("video_chan_cau.mp4") == "video_chan_cau.mp4"
+    assert is_network_source("http://x/video") and not is_network_source(0) and not is_network_source("a.mp4")

@@ -44,7 +44,43 @@ def _pick_backend_for_platform():
     return cv2.CAP_ANY
 
 
-def open_camera(source, warmup_sec: float = 2.0) -> "cv2.VideoCapture":
+_IP_RE = r"^\d{1,3}(\.\d{1,3}){3}(:\d+)?$"
+PHONE_APPS = {   # ung dung bien dien thoai thanh camera qua Wi-Fi -> (cong mac dinh, duong dan luong video)
+    "phone": (8080, "/video"),        # "IP Webcam" (Android)
+    "ipwebcam": (8080, "/video"),
+    "droidcam": (4747, "/video"),     # DroidCam (Android / iPhone)
+}
+
+
+def resolve_source(source):
+    """Chuan hoa --source:
+        "0", "1"                       -> webcam so 0, 1 (webcam laptop thuong la 0, webcam USB la 1)
+        "phone:192.168.1.5"            -> http://192.168.1.5:8080/video   (ung dung IP Webcam)
+        "droidcam:192.168.1.5"         -> http://192.168.1.5:4747/video   (ung dung DroidCam)
+        "192.168.1.5:8080"             -> http://192.168.1.5:8080/video
+        "http://...", "rtsp://...", duong dan video  -> giu nguyen
+    """
+    import re
+    s = str(source).strip()
+    if s.isdigit():
+        return int(s)
+    low = s.lower()
+    for app, (port, path) in PHONE_APPS.items():
+        if low.startswith(app + ":"):
+            host = s.split(":", 1)[1].strip().strip("/")
+            if ":" not in host:
+                host = f"{host}:{port}"
+            return f"http://{host}{path}"
+    if re.match(_IP_RE, s):
+        return f"http://{s if ':' in s else s + ':8080'}/video"
+    return s
+
+
+def is_network_source(source) -> bool:
+    return isinstance(source, str) and source.lower().startswith(("http://", "https://", "rtsp://", "rtmp://"))
+
+
+def open_camera(source, warmup_sec: float = 2.0, resolution=(1280, 720)) -> "cv2.VideoCapture":
     """Mo camera (so webcam) hoac video/RTSP (duong dan), tu dong chon
     dung backend OpenCV theo he dieu hanh. Co warmup (cho vai giay) de 1
     so webcam (dac biet tren macOS) kip khoi dong truoc khi doc frame dau
@@ -56,6 +92,16 @@ def open_camera(source, warmup_sec: float = 2.0) -> "cv2.VideoCapture":
             # Mot so may khong ho tro backend rieng cua he dieu hanh (vd
             # driver camera ao, may ao hoa...) - thu lai bang backend mac
             # dinh cua OpenCV truoc khi ket luan la "khong mo duoc camera".
+            cap.release()
+            cap = cv2.VideoCapture(source)
+        if cap.isOpened() and resolution:
+            # webcam USB thuong mac dinh 640x480 -> xin 1280x720 (mat to hon, nhan dien Nam/Nu tot hon);
+            # camera khong ho tro thi tu giu do phan giai cua no
+            cap.set(cv2.CAP_PROP_FRAME_WIDTH, resolution[0])
+            cap.set(cv2.CAP_PROP_FRAME_HEIGHT, resolution[1])
+    elif is_network_source(source):
+        cap = cv2.VideoCapture(source, cv2.CAP_FFMPEG)     # luong video dien thoai / camera IP
+        if not cap.isOpened():
             cap.release()
             cap = cv2.VideoCapture(source)
     else:
