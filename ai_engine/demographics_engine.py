@@ -67,12 +67,14 @@ from collections import deque
 from dataclasses import dataclass, field
 from typing import Deque, Dict, Optional, Tuple
 
-from age_gender_estimator import estimate_demographics_from_person_box
+from age_gender_estimator import (align_face_from_keypoints, estimate_demographics_from_person_box,
+                                  estimate_from_aligned_face)
 from region_mapping import classify_region_from_deepface_race
 
 CONFIDENCE_THRESHOLD = 0.70   # Phase 2: chi hien ket qua khi do tin cay >= 70%
 VOTE_WINDOW = 6                # so phieu (frame) gan nhat duoc xet cho 1 track_id
 MIN_VOTES_BEFORE_READY = 3     # it nhat 3 phieu moi bat dau xet "san sang"
+RACE_VOTES = 4                 # du 4 lan uoc luong khu vuc thi thoi chay "race" cho nguoi do (nhanh hon)
 _FLIP_MARGIN = 0.15            # ket qua moi phai thang ket qua da chot >= 15% moi duoc doi (smoothing)
 
 # Tin hieu phu tu ty le vai/hong CHI duoc cong vao khi DeepFace that su
@@ -302,6 +304,8 @@ class DemographicsEngine:
     def __init__(self, enable_region: bool = False):
         self.enable_region = enable_region
         self.voter = TemporalVoter()
+        self._race_n: Dict[int, int] = {}     # so lan da uoc luong khu vuc cho moi track
+        self.last_path = ""                   # "keypoint" (nhanh) | "detector" (du phong)
         if enable_region:
             print(
                 "[DemographicsEngine] DA BAT tinh nang uoc luong KHU VUC (Phase 3).\n"
@@ -315,11 +319,20 @@ class DemographicsEngine:
         """Goi 1 LAN MOI FRAME cho moi track_id dang theo doi (co the goi
         lai nhieu lan cho CUNG 1 track_id - ham se tu bo phieu don dan,
         KHONG can tu quan ly cache ben ngoai nhu ban cu)."""
-        info = estimate_demographics_from_person_box(frame, box, include_race=self.enable_region)
+        # Race (de uoc luong nguon khach) chi chay toi khi du phieu -> moi lan phan tich nhanh hon
+        want_race = self.enable_region and self._race_n.get(track_id, 0) < RACE_VOTES
+        face = align_face_from_keypoints(frame, keypoints, kp_conf)
+        if face is not None:            # nhanh: cat mat theo keypoint, khong can tim mat
+            info = estimate_from_aligned_face(face, include_race=want_race)
+            self.last_path = "keypoint"
+        else:                           # du phong: model khong co keypoint -> DeepFace tu tim mat
+            info = estimate_demographics_from_person_box(frame, box, include_race=want_race)
+            self.last_path = "detector"
 
         if info["gender"] is not None:
-            # DeepFace tra ve gender_confidence theo thang 0-100 -> doi ve 0-1
-            df_conf = max(0.0, min(1.0, info["gender_confidence"] / 100.0))
+            # Trong so = muc "chac chan" (50% -> 0, 100% -> 1): ket qua 55% gan nhu khong duoc tinh,
+            # truoc day 55% van co trong so 0.55 gan bang 99% -> de bi keo sai.
+            df_conf = max(0.0, min(1.0, (info["gender_confidence"] - 50.0) / 50.0))
             self.voter.add_vote(track_id, info["gender"], df_conf)
             if info["age"] is not None:
                 # SUA LOI LAN 5: dung weight = do tin cay DeepFace cua CHINH
@@ -329,9 +342,10 @@ class DemographicsEngine:
                 # tu CUNG 1 lan phan tich/1 vung mat.
                 self.voter.add_age_vote(track_id, info["age_range"], info["age"], weight=df_conf)
 
-            if self.enable_region:
+            if want_race and info.get("race_probs"):
                 region, region_conf = classify_region_from_deepface_race(info.get("race_probs"))
                 if region is not None:
+                    self._race_n[track_id] = self._race_n.get(track_id, 0) + 1
                     self.voter.set_region(track_id, region, region_conf)
 
             # Tin hieu pose CHI duoc cong them khi DA BAT (_POSE_SIGNAL_ENABLED,
@@ -353,3 +367,4 @@ class DemographicsEngine:
 
     def forget(self, track_id: int):
         self.voter.forget(track_id)
+        self._race_n.pop(track_id, None)

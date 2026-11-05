@@ -164,3 +164,31 @@ def reconciliation(date: str = "", db: Session = Depends(get_db)):
         "gap_rate_pct": _rate(compared_entries, tickets_total) if tickets_total is not None else None,
         "by_hour": rows,
     }
+
+
+@router.get("/reconciliation_range")
+def reconciliation_range(date_from: str, date_to: str, db: Session = Depends(get_db)):
+    """Doi chieu THEO NGAY trong 1 khoang ngay: moi ngay = luot vao ca ngay so voi tong so ve ngay do
+    (nhap ca ngay, hoac cong cac gio da nhap - khi do chi so cac gio da nhap)."""
+    try:
+        start, end = parse_day(date_from), parse_day(date_to)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ngày phải có dạng YYYY-MM-DD.")
+    if end < start or (end - start).days > 366:
+        raise HTTPException(status_code=400, detail="Khoảng ngày không hợp lệ (tối đa 1 năm).")
+    rows = []
+    d = start
+    while d <= end:
+        rec = reconciliation(date=d.strftime("%Y-%m-%d"), db=db)
+        rows.append({"date": rec["date"], "entries": rec["entries_counted"], "tickets": rec["tickets_sold"],
+                     "compared_entries": rec["compared_entries"], "mode": rec["mode"] if rec["tickets_sold"] is not None else None,
+                     "gap": rec["gap"], "gap_rate_pct": rec["gap_rate_pct"]})
+        d += timedelta(days=1)
+    with_t = [r for r in rows if r["tickets"] is not None]
+    ce = sum(r["compared_entries"] for r in with_t)
+    tt = sum(r["tickets"] for r in with_t)
+    return {"date_from": start.strftime("%Y-%m-%d"), "date_to": end.strftime("%Y-%m-%d"), "days": rows,
+            "total_entries": sum(r["entries"] for r in rows), "days_with_tickets": len(with_t),
+            "compared_entries": ce, "total_tickets": tt if with_t else None,
+            "gap": ce - tt if with_t else None, "gap_rate_pct": _rate(ce, tt) if with_t else None,
+            "worst_day": max(with_t, key=lambda r: r["gap_rate_pct"] or 0)["date"] if with_t else None}

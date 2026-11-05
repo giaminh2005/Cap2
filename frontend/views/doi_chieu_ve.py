@@ -5,6 +5,9 @@ Nhap so cuong ve thu tai Chua Cau (theo ngay hoac theo gio, nhap tay hoac
 tu tep CSV/Excel) va so voi luot vao long cau do 2 camera dem.
 """
 
+import io
+from datetime import timedelta
+
 import pandas as pd
 import streamlit as st
 
@@ -102,6 +105,58 @@ with right, st.container(border=True):
             st.error(f"Tệp không đúng định dạng (cần cột date, hour, ticket_count): {e}")
         except ApiError as e:
             st.error(str(e))
+
+st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+view = st.segmented_control("Xem đối chiếu", ["Theo ngày (nhiều ngày)", "Theo giờ trong 1 ngày"],
+                            default="Theo ngày (nhiều ngày)", key="rec_view")
+
+if view != "Theo giờ trong 1 ngày":
+    rng = st.date_input("Khoảng ngày đối chiếu", value=(day - timedelta(days=6), day), max_value=local_today(),
+                        format="DD/MM/YYYY", key="rec_range")
+    if not isinstance(rng, (tuple, list)) or len(rng) != 2:
+        st.info("Chọn ngày bắt đầu và ngày kết thúc.")
+        st.stop()
+    rr = safe_get("/tickets/reconciliation_range", {"date_from": rng[0].isoformat(), "date_to": rng[1].isoformat()})
+    if rr is None:
+        st.stop()
+    rate = rr["gap_rate_pct"]
+    kpi_row([
+        kpi("Lượt vào lòng cầu", fmt_int(rr["total_entries"]), f"{len(rr['days'])} ngày", "primary"),
+        kpi("Số cuống vé", fmt_int(rr["total_tickets"]),
+            f"{rr['days_with_tickets']}/{len(rr['days'])} ngày đã nhập vé", "info"),
+        kpi("Chênh lệch", fmt_int(rr["gap"]), f"so trên {fmt_int(rr['compared_entries'])} lượt của các ngày đã nhập vé",
+            "warn" if (rr["gap"] or 0) > 0 else "ok"),
+        kpi("Tỷ lệ chênh lệch", "–" if rate is None else f"{rate:.1f}%",
+            f"lệch nhiều nhất ngày {rr['worst_day'][8:]}/{rr['worst_day'][5:7]}" if rr["worst_day"] else "",
+            "danger" if (rate or 0) >= 10 else "warn" if (rate or 0) > 0 else "ok"),
+    ])
+    dd = pd.DataFrame(rr["days"])
+    dd["Ngày"] = dd["date"].map(lambda x: f"{x[8:]}/{x[5:7]}")
+    with st.container(border=True):
+        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Theo ngày</div>', unsafe_allow_html=True)
+        if HAS_PLOTLY:
+            fig = go.Figure()
+            fig.add_bar(x=dd["Ngày"], y=dd["entries"], name="Lượt vào cầu", marker_color=COLORS["primary"])
+            fig.add_bar(x=dd["Ngày"], y=dd["tickets"], name="Số cuống vé", marker_color=COLORS["ochre"])
+            if dd["gap_rate_pct"].notna().any():
+                fig.add_scatter(x=dd["Ngày"], y=dd["gap_rate_pct"], name="Tỷ lệ chênh lệch (%)", yaxis="y2",
+                                mode="lines+markers", line=dict(color=COLORS["blue"], width=2))
+                fig.update_layout(yaxis2=dict(overlaying="y", side="right", ticksuffix="%", showgrid=False))
+            st.plotly_chart(style_fig(fig, 320), width="stretch")
+        mode_vi = {"day": "cả ngày", "hour": "theo giờ", None: "chưa nhập"}
+        show = pd.DataFrame({
+            "Ngày": dd["date"].map(lambda x: f"{x[8:]}/{x[5:7]}/{x[:4]}"),
+            "Lượt vào": dd["entries"], "Nhập vé": dd["mode"].map(lambda m: mode_vi.get(m, "chưa nhập")),
+            "Số vé": dd["tickets"], "Chênh lệch": dd["gap"], "Tỷ lệ (%)": dd["gap_rate_pct"],
+        }).astype(object)
+        st.dataframe(show.where(show.notna(), "–").astype(str), hide_index=True, width="stretch")
+        buf = io.BytesIO()
+        show.to_excel(buf, index=False)
+        st.download_button("Tải bảng đối chiếu (Excel)", buf.getvalue(),
+                           f"doi_chieu_ve_{rng[0].isoformat()}_{rng[1].isoformat()}.xlsx",
+                           "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                           icon=":material/download:")
+    st.stop()
 
 rec = safe_get("/tickets/reconciliation", {"date": day_s})
 if rec is None:

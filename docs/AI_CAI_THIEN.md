@@ -63,3 +63,18 @@ Khuyến nghị cho học kỳ: làm **A1 + cổng chất lượng + hiệu ch�
 3. Chạy `python tools/eval_counting.py --truth dem_tay.csv` với từng cấu hình (mặc định, `--imgsz 960`, model `s`), chọn cấu hình tốt nhất trong giới hạn tốc độ.
 4. Tải FairFace (tập val) và UTKFace, chạy `tools/eval_demographics.py` (trước và sau hiệu chỉnh tuổi), dán bảng `.md` vào báo cáo.
 5. Ghi lại cấu hình đã chọn (model, imgsz, face-detector, vị trí vạch) để vận hành thử dùng đúng cấu hình đó.
+
+
+## Cập nhật: nhận diện Nam/Nữ nhanh và đúng hơn
+
+| Vấn đề cũ | Nguyên nhân | Đã sửa |
+|---|---|---|
+| Chậm | DeepFace phải tự tìm mặt trong cả khung người mỗi lần; chạy 3 mô hình (tuổi, giới tính, chủng tộc) mỗi lần | Cắt mặt sẵn theo 2 mắt + mũi của YOLO-pose rồi gọi DeepFace với `detector_backend="skip"`; mô hình chủng tộc chỉ chạy 4 lần mỗi người; đã chốt kết quả thì phân tích thưa lại (1,5 giây) |
+| Lấy nhầm mặt người bên cạnh | Chọn mặt "gần tâm khung người", mà tâm khung người nằm ngang bụng | Mặt cắt đúng theo keypoint của chính người đó |
+| Mặt nghiêng, nhỏ → đoán sai | Mặt không được căn chỉnh | Xoay cho 2 mắt nằm ngang, cắt theo tỷ lệ chuẩn 224×224 |
+| Một khung "55%" kéo sai kết quả | Trọng số phiếu = độ chắc (55% ≈ 99%) | Trọng số = (độ chắc − 50%) / 50% |
+| Ảnh mơ hồ | — | Dưới 85% chắc chắn thì phân tích thêm ảnh lật gương, lấy trung bình |
+
+Thanh dưới cửa sổ camera hiện `mặt xx ms`: thời gian một lần phân tích mặt. Chưa đo trên máy thật (môi trường phát triển không cài DeepFace); chạy `tools/eval_demographics.py` trên FairFace để có số liệu độ chính xác thật.
+
+Giới hạn còn lại: mô hình giới tính của DeepFace học chủ yếu từ ảnh người phương Tây, nên với khách châu Á, trẻ em, người lớn tuổi vẫn có thể sai. Muốn cải thiện thêm thì thay mô hình (ví dụ mô hình giới tính – tuổi của InsightFace chạy bằng ONNX, nhỏ và nhanh hơn nhiều); việc này cần tải tệp mô hình nên chưa làm.

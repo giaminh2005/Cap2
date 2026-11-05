@@ -568,7 +568,9 @@ def main():
         prev_level = level
 
         draw_hud(out, layer, cam, state, level, thresholds, local_in, local_out, facade_total, fps, api_ok,
-                 groups.current_size, ai_status or f"AI {ai_ms:.0f} ms/khung")
+                 groups.current_size, ai_status or (f"AI {ai_ms:.0f} ms/khung"
+                                                    + (f" · mặt {profiler.engine.avg_ms:.0f} ms"
+                                                       if profiler is not None and getattr(profiler.engine, "avg_ms", 0) else "")))
         layer.render(out)
         cv2.imshow(window, out)
         key = cv2.waitKey(1) & 0xFF
