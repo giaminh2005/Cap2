@@ -5,3 +5,4 @@ __pycache__/
 .env
 ai_engine/config/
 config/
+tools/anh_camera/

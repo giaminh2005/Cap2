@@ -80,6 +80,8 @@ Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có t
 
 Bot Telegram trả lời `/tinhhinh`, `/homnay`, `/suco` và có nút **✅ Đã xử lý** ngay dưới tin cảnh báo Đỏ; mỗi tin kèm tình hình hiện tại. Xem `docs/GHI_CHU_GIAO_DIEN.md`, mục "Tin nhắn Telegram và tự động hóa".
 
+Dùng webcam USB hoặc **điện thoại làm camera** (`--source 1`, `--source phone:<IP>`, `--source droidcam:<IP>`): xem `docs/CAMERA_NGOAI.md`; dò camera bằng `python tools/tim_camera.py`.
+
 Nhận diện giới tính / tuổi / nguồn khách bật sẵn; thêm `--no-demographics` nếu chỉ cần đếm. Các ghi chú, hướng dẫn và mã yêu cầu (FR, BRULE, KPI) đã gỡ khỏi giao diện web được lưu ở `docs/GHI_CHU_GIAO_DIEN.md`.
 
 - **Đăng nhập lần đầu:** `admin` / `admin123`, hệ thống bắt đổi mật khẩu. Tạo thêm tài khoản Quản lý, Người trực ở trang **Tài khoản**.
