@@ -458,3 +458,88 @@ if __name__ == "__main__":
         out_path = path.rsplit(".", 1)[0] + "_age_gender.jpg"
         cv2.imwrite(out_path, annotated)
         print(f"Da luu anh ket qua: {out_path}")
+
+
+
+# =====================================================================
+# NHANH HON + DUNG NGUOI HON: cat mat theo keypoint cua YOLO-pose
+# =====================================================================
+# Truoc day: dua CA khung nguoi (toan than) vao DeepFace, DeepFace phai TU TIM MAT
+# trong vung lon -> cham (tim mat la buoc ton thoi gian nhat), mat nho, de lay nham
+# mat nguoi ben canh (chon "mat gan tam khung nguoi" ma tam khung nguoi la ngang bung).
+# Bay gio: YOLO-pose da cho vi tri 2 mat + mui -> xoay cho 2 mat nam ngang, cat dung
+# khuon mat 224x224 theo ty le chuan cua mo hinh (2 mat o ~38% chieu cao), roi goi
+# DeepFace voi detector_backend="skip" (bo qua buoc tim mat).
+FACE_SIZE = 224
+_EYE_Y = 0.38          # vi tri 2 mat theo chieu cao anh mat chuan
+_EYE_SPAN = 0.33       # khoang cach 2 mat / chieu rong anh mat
+TTA_BELOW = 85.0       # gioi tinh < 85% chac chan -> phan tich them anh lat guong roi lay trung binh
+_NOSE, _LEYE, _REYE = 0, 1, 2
+
+
+def align_face_from_keypoints(frame, keypoints, kp_conf, min_conf: float = 0.5, size: int = FACE_SIZE):
+    """Tra ve anh mat da can chinh (size x size, BGR) hoac None neu keypoint mat khong du tin cay.
+    1 phep warpAffine duy nhat: xoay (2 mat nam ngang) + cat + phong to."""
+    import math
+
+    import cv2
+    import numpy as np
+    if keypoints is None or kp_conf is None or len(keypoints) < 3:
+        return None
+    if min(kp_conf[_NOSE], kp_conf[_LEYE], kp_conf[_REYE]) < min_conf:
+        return None
+    (lx, ly), (rx, ry) = keypoints[_LEYE], keypoints[_REYE]
+    # "mat trai" cua nguoi nam ben PHAI anh -> sap xep theo x cho on dinh
+    (ax, ay), (bx, by) = sorted([(lx, ly), (rx, ry)])
+    dist = math.hypot(bx - ax, by - ay)
+    if dist < 6:
+        return None
+    angle = math.degrees(math.atan2(by - ay, bx - ax))
+    scale = (_EYE_SPAN * size) / dist
+    cx, cy = (ax + bx) / 2.0, (ay + by) / 2.0
+    M = cv2.getRotationMatrix2D((cx, cy), angle, scale)
+    M[0, 2] += size / 2.0 - cx
+    M[1, 2] += _EYE_Y * size - cy
+    face = cv2.warpAffine(frame, M, (size, size), flags=cv2.INTER_LINEAR, borderMode=cv2.BORDER_REPLICATE)
+    return face if face.size and np.isfinite(face).all() else None
+
+
+def _analyze_skip(face_bgr, actions):
+    DeepFace = _load_deepface()
+    if DeepFace is None:
+        return None
+    res = DeepFace.analyze(img_path=face_bgr, actions=actions, enforce_detection=False,
+                           detector_backend="skip", align=False, silent=True)
+    return res[0] if isinstance(res, list) else res
+
+
+def estimate_from_aligned_face(face_bgr, include_race: bool = False, tta: bool = True) -> Dict:
+    """Phan tich 1 anh mat DA CAN CHINH (khong tim mat lai). Lat guong khi gioi tinh chua chac (TTA).
+    Tra ve cung dang voi estimate_demographics_from_person_box."""
+    empty = {"age": None, "age_range": "Khong ro", "gender": None, "gender_confidence": 0.0, "race_probs": None}
+    if face_bgr is None:
+        return empty
+    import cv2
+    face = _apply_clahe(face_bgr)
+    actions = ["age", "gender", "race"] if include_race else ["age", "gender"]
+    try:
+        r = _analyze_skip(face, actions)
+    except Exception as e:
+        print(f"Loi khi phan tich tuoi/gioi tinh: {e}")
+        return empty
+    if r is None:
+        return empty
+    probs = dict(r.get("gender") or {})
+    if tta and probs and max(probs.values()) < TTA_BELOW:
+        try:
+            r2 = _analyze_skip(cv2.flip(face, 1), ["gender"])
+            p2 = (r2 or {}).get("gender") or {}
+            probs = {k: (probs.get(k, 0) + p2.get(k, 0)) / 2 for k in set(probs) | set(p2)}
+        except Exception:
+            pass
+    if not probs:
+        return empty
+    g = max(probs, key=probs.get)
+    age = calibrate_age(int(r.get("age", -1)))
+    return {"age": age, "age_range": age_to_range(age), "gender": g, "gender_confidence": round(float(probs[g]), 1),
+            "race_probs": (r.get("race") or None) if include_race else None}

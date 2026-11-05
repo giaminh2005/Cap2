@@ -101,6 +101,7 @@ class AsyncEngine:
         import queue
         import threading
         self.engine, self.max_pending = engine, max_pending
+        self.avg_ms = 0.0                     # thoi gian trung binh 1 lan phan tich mat (hien tren HUD)
         self.q = queue.Queue()
         self.results, self.pending = {}, set()
         self.lock = threading.Lock()
@@ -115,7 +116,11 @@ class AsyncEngine:
                     self.results.pop(tid, None)
                 continue
             try:
+                import time as _t
+                t0 = _t.time()
                 res = dict(self.engine.update(tid, *args[:2], keypoints=args[2], kp_conf=args[3]))
+                ms = (_t.time() - t0) * 1000
+                self.avg_ms = ms if not self.avg_ms else 0.8 * self.avg_ms + 0.2 * ms
             except Exception as e:   # 1 khung loi khong lam dung nhan dien
                 print(f"[nhận diện] Lỗi phân tích: {e}")
                 res = None
@@ -168,6 +173,7 @@ class VisitorProfiler:
             engine = AsyncEngine(DemographicsEngine(enable_region=with_origin))
         self.engine, self.post, self.with_origin, self.camera_id = engine, post, with_origin, camera_id
         self.analyze_interval, self.give_up_sec = analyze_interval, give_up_sec
+        self.ready_interval = 1.5
         self.gone_sec, self.forget_sec = gone_sec, forget_sec
         self.quality_gate = quality_gate
         self.rejected = {}
@@ -185,7 +191,9 @@ class VisitorProfiler:
         if t is None:
             t = self._tracks[tid] = _Track(first_seen=now, last_seen=now)
         t.last_seen = now
-        if t.done or now - t.last_analyzed < self.analyze_interval:
+        # Da chot ket qua (cho qua vach) -> phan tich thua hon de nhuong DeepFace cho nguoi khac
+        interval = self.ready_interval if t.info and t.info.get("ready") else self.analyze_interval
+        if t.done or now - t.last_analyzed < interval:
             return
         t.last_analyzed = now
         if self.quality_gate:

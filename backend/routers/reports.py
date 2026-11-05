@@ -39,20 +39,48 @@ TIME_SLOTS = [("Sáng (06–11h)", 6, 11), ("Trưa (11–14h)", 11, 14),
               ("Chiều (14–18h)", 14, 18), ("Tối (18–23h)", 18, 23)]
 
 
+PERIODS = ("day", "week", "month", "year", "custom")
+MAX_CUSTOM_DAYS = 3 * 366
+
+
+def period_range(period: str, date: str = "", date_from: str = "", date_to: str = ""):
+    """(ngay dau, ngay cuoi) cua ky bao cao (gio dia phuong, 00:00).
+    day = 1 ngay; week = 7 ngay ket thuc o `date`; month = thang duong lich chua `date`;
+    year = nam duong lich chua `date`; custom = date_from -> date_to."""
+    if period not in PERIODS:
+        raise HTTPException(status_code=400, detail="period phải là day, week, month, year hoặc custom.")
+    try:
+        ref = parse_day(date) if date else local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+        if period == "custom":
+            start, end = parse_day(date_from), parse_day(date_to)
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ngày phải có dạng YYYY-MM-DD.")
+    if period == "day":
+        return ref, ref
+    if period == "week":
+        return ref - timedelta(days=6), ref
+    if period == "month":
+        start = ref.replace(day=1)
+        nxt = (start + timedelta(days=32)).replace(day=1)
+        return start, nxt - timedelta(days=1)
+    if period == "year":
+        return ref.replace(month=1, day=1), ref.replace(month=12, day=31)
+    if end < start:
+        raise HTTPException(status_code=400, detail="Ngày bắt đầu phải trước ngày kết thúc.")
+    if (end - start).days + 1 > MAX_CUSTOM_DAYS:
+        raise HTTPException(status_code=400, detail="Khoảng ngày tối đa 3 năm.")
+    return start, end
+
+
 @router.get("/summary")
-def report_summary(period: str = "day", date: str = "", db: Session = Depends(get_db)):
+def report_summary(period: str = "day", date: str = "", date_from: str = "", date_to: str = "",
+                   db: Session = Depends(get_db)):
     from .alerts import Incident
     from .bridge import BridgeCrossing
     from .counting import FacadePass
 
-    if period not in ("day", "week", "month"):
-        raise HTTPException(status_code=400, detail="period phải là day, week hoặc month.")
-    try:
-        end = parse_day(date) if date else local_now().replace(hour=0, minute=0, second=0, microsecond=0)
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Ngày phải có dạng YYYY-MM-DD.")
-    span = {"day": 1, "week": 7, "month": 30}[period]
-    start = end - timedelta(days=span - 1)
+    start, end = period_range(period, date, date_from, date_to)
+    span = (end - start).days + 1
     s_utc, e_utc = local_day_range_utc(start, end)
 
     entries = [to_local(ts) for (ts,) in db.query(BridgeCrossing.timestamp)
@@ -100,11 +128,14 @@ def report_summary(period: str = "day", date: str = "", db: Session = Depends(ge
     ticket_days = sorted({d for (d,) in db.query(TicketCount.date).filter(
         TicketCount.date >= start.strftime("%Y-%m-%d"), TicketCount.date <= end.strftime("%Y-%m-%d")).all()})
     o8_entries = o8_tickets = 0
+    ticket_rows = []
     for d in ticket_days:          # cung cach tinh voi trang Doi chieu ve (chi so cac gio da nhap ve)
         rec = reconciliation(date=d, db=db)
         if rec["tickets_sold"] is not None:
             o8_entries += rec["compared_entries"]
             o8_tickets += rec["tickets_sold"]
+            ticket_rows.append({"date": d, "entries": rec["compared_entries"], "tickets": rec["tickets_sold"],
+                                "gap": rec["gap"], "gap_rate_pct": rec["gap_rate_pct"]})
     kpis = {
         "o1_minutes_over": len(over_minutes),
         "o1_minutes_per_day": round(len(over_minutes) / span, 1),
@@ -116,8 +147,26 @@ def report_summary(period: str = "day", date: str = "", db: Session = Depends(ge
         "capacity": cap,
     }
 
+    # Ky truoc cung do dai (thang / nam: thang / nam duong lich truoc) -> so sanh tang giam
+    if period == "month":
+        p_end = start - timedelta(days=1)
+        p_start = p_end.replace(day=1)
+    elif period == "year":
+        p_start, p_end = start.replace(year=start.year - 1), end.replace(year=end.year - 1)
+    else:
+        p_start, p_end = start - timedelta(days=span), start - timedelta(days=1)
+    today0 = local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    partial = end > today0 >= start           # ky dang dien ra -> so voi cung so ngay cua ky truoc
+    if partial:
+        p_end = min(p_end, p_start + (today0 - start))
+    ps_utc, pe_utc = local_day_range_utc(p_start, p_end)
+    prev_entries = (db.query(BridgeCrossing).filter(BridgeCrossing.direction == "in", BridgeCrossing.timestamp >= ps_utc,
+                                                    BridgeCrossing.timestamp < pe_utc).count())
+
     return {
         "period": period,
+        "previous": {"date_from": p_start.strftime("%Y-%m-%d"), "date_to": p_end.strftime("%Y-%m-%d"),
+                     "total_entries": prev_entries, "same_elapsed_days": partial},
         "date_from": start.strftime("%Y-%m-%d"),
         "date_to": end.strftime("%Y-%m-%d"),
         "total_entries": len(entries),
@@ -128,6 +177,10 @@ def report_summary(period: str = "day", date: str = "", db: Session = Depends(ge
         "peak_count": peak.count if peak else 0,
         "peak_time": to_local(peak.timestamp).isoformat() if peak else None,
         "by_day": [{"date": d, "entries": n} for d, n in sorted(by_day.items())],
+        "by_month": [{"month": m, "entries": sum(n for d, n in by_day.items() if d[:7] == m)}
+                     for m in sorted({d[:7] for d in by_day})],
+        "tickets": ticket_rows,
+        "capacity": cap,
         "by_hour": [{"hour": h, "entries": by_hour[h]} for h in sorted(by_hour)],
         "by_15min": [{"slot": k, "entries": by_15[k]} for k in sorted(by_15)] if period == "day" else [],
         "time_slots": slots,

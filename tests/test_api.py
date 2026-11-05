@@ -223,11 +223,20 @@ def test_demographics_excludes_unknown():
 
 # ------------------------------------------------------------- M4 bao cao
 def test_report_summary_real_data():
-    for period in ("day", "week", "month"):
+    import calendar
+    today = datetime.utcnow() + timedelta(hours=7)
+    for period in ("day", "week", "month", "year"):
         d = client.get("/reports/summary", params={"period": period}).json()
         assert "mock" not in d
-        assert d["total_entries"] == sum(x["entries"] for x in d["by_day"])
-        assert len(d["by_day"]) == {"day": 1, "week": 7, "month": 30}[period]
+        assert d["total_entries"] == sum(x["entries"] for x in d["by_day"]) == sum(x["entries"] for x in d["by_month"])
+        assert len(d["by_day"]) == {"day": 1, "week": 7, "month": calendar.monthrange(today.year, today.month)[1],
+                                    "year": 366 if calendar.isleap(today.year) else 365}[period]
+    y = client.get("/reports/summary", params={"period": "year"}).json()
+    assert len(y["by_month"]) == 12 and y["date_from"].endswith("-01-01") and y["date_to"].endswith("-12-31")
+    c = client.get("/reports/summary", params={"period": "custom", "date_from": "2026-01-05", "date_to": "2026-01-20"}).json()
+    assert len(c["by_day"]) == 16
+    assert client.get("/reports/summary", params={"period": "custom", "date_from": "2026-02-01",
+                                                  "date_to": "2026-01-01"}).status_code == 400
     day = client.get("/reports/summary", params={"period": "day"}).json()
     assert day["total_entries"] == sum(x["entries"] for x in day["by_15min"])
     assert len(day["time_slots"]) == 4 and day["incidents"] >= 1
@@ -523,3 +532,15 @@ def test_sheets_auto_sync_skips_when_not_configured(monkeypatch):
     monkeypatch.delenv("GOOGLE_SHEETS_ID", raising=False)
     assert sheets_auto.load_conf()["configured"] is False
     assert sheets_auto.auto_sync_after_report() == "" and sheets_auto.sync_now() == "chưa cấu hình"
+
+
+def test_ticket_reconciliation_by_day_range():
+    from backend.timeutil import local_now
+    t = local_now().strftime("%Y-%m-%d")
+    y = (local_now() - timedelta(days=1)).strftime("%Y-%m-%d")
+    client.post("/tickets", headers=ADMIN, json={"date": y, "hour": None, "ticket_count": 7})
+    r = client.get("/tickets/reconciliation_range", params={"date_from": y, "date_to": t}).json()
+    assert [d["date"] for d in r["days"]] == [y, t]
+    assert r["days"][0]["tickets"] == 7 and r["days_with_tickets"] >= 1
+    assert r["total_tickets"] == sum(d["tickets"] for d in r["days"] if d["tickets"] is not None)
+    assert client.get("/tickets/reconciliation_range", params={"date_from": t, "date_to": y}).status_code == 400
