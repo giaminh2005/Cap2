@@ -68,7 +68,7 @@ from line_crossing import FacadeCounter, LineCrossingCounter, foot_point
 from telegram_alert import trigger_buzzer_signal
 from visitor_profiler import VisitorProfiler, extract_keypoints
 
-API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")
+API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")   # doi bang --api khi may chu la may khac
 API_KEY = os.environ.get("SMARTCAU_API_KEY", "")
 _HEADERS = {"X-API-Key": API_KEY} if API_KEY else {}
 CONFIG_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "config")
@@ -91,6 +91,7 @@ thường do pip cài kèm khi cài DeepFace / YOLO. Cách sửa (chạy trong .
   3) python -c "import cv2; print(cv2.__version__); cv2.namedWindow('test'); print('OK')"
 """
 
+MACHINE = __import__("platform").node() or "?"
 LEVEL_VI = {"OK": "Bình thường", "WARNING": "Cảnh báo Vàng", "ALERT": "Vàng · đang xác nhận 15 giây",
             "CRITICAL": "CẢNH BÁO ĐỎ · QUÁ TẢI"}
 LEVEL_BGR = {"OK": (80, 160, 60), "WARNING": (0, 170, 240), "ALERT": (0, 120, 255), "CRITICAL": (40, 40, 210)}
@@ -257,6 +258,9 @@ def draw_hud(frame, layer, cam, state, level, thresholds, local_in, local_out, f
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(description="Camera chân cầu - SmartCau AI")
     ap.add_argument("--camera-id", type=int, choices=(1, 2), required=True)
+    ap.add_argument("--api", default=None,
+                    help="Dia chi may chu khi chay nhieu may, vd http://192.168.1.10:8000 (mac dinh SMARTCAU_API hoac 127.0.0.1)")
+    ap.add_argument("--api-key", default=None, help="Khoa camera neu may chu dat SMARTCAU_API_KEY")
     ap.add_argument("--source", default="0", help="Số webcam (0, 1...) hoặc đường dẫn video/RTSP")
     ap.add_argument("--demographics", action="store_true", help="Ước lượng giới tính, tuổi, trong/ngoài nước")
     ap.add_argument("--no-origin", action="store_true", help="Bỏ ước lượng trong/ngoài nước")
@@ -287,7 +291,18 @@ def parse_args(argv=None):
 
 def main():
     args = parse_args()
+    global API_BASE, _HEADERS
+    if args.api:
+        API_BASE = args.api.rstrip("/")
+    if args.api_key:
+        _HEADERS = {"X-API-Key": args.api_key}
     cam = args.camera_id
+    if not _get("/health"):
+        print(f"[CAMERA {cam}] KHÔNG kết nối được máy chủ {API_BASE}. Kiểm tra: máy chủ đã chạy "
+              "'uvicorn backend.main:app --host 0.0.0.0 --port 8000', cùng mạng Wi-Fi, tường lửa mở cổng 8000. "
+              "Thử: python tools/kiem_tra_mang.py " + API_BASE)
+    else:
+        print(f"[CAMERA {cam}] Đã kết nối máy chủ {API_BASE}.")
     window = f"SmartCau AI - Camera chan cau {cam}"
     if not vietnamese_text_supported():
         print("[CẢNH BÁO] Không tìm thấy font tiếng Việt - chữ trên camera sẽ không có dấu. "
@@ -453,7 +468,7 @@ def main():
                 print(f"[CAMERA {cam}] Ngưỡng mới: Vàng từ {thresholds.warning}, tối đa {thresholds.alert}.")
             last_cfg = now
         if now - last_hb >= HEARTBEAT_SEC:
-            _post("/bridge/heartbeat", {"camera_id": cam, "source": source_label, "fps": fps,
+            _post("/bridge/heartbeat", {"camera_id": cam, "source": source_label, "fps": fps, "machine": MACHINE,
                                         "line": f"{line.p1} → {line.p2}", "sends_alerts": args.send_alerts,
                                         "demographics": profiler is not None})
             last_hb = now

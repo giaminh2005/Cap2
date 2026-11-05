@@ -7,7 +7,7 @@ mat tin hieu), nguon hinh, toc do xu ly, vach ke dang dung, huong dan chay.
 
 import streamlit as st
 
-from common import section, badge, fmt_time, note, page_header, safe_get
+from common import badge, fmt_time, note, page_header, public_api_base, safe_get, section
 
 page_header("Hệ thống · Nguồn hình", "Camera", "Trạng thái hai camera chân cầu, tự cập nhật mỗi 5 giây.")
 
@@ -30,6 +30,7 @@ def cams():
             else:
                 st.markdown(badge("Chưa từng kết nối", "muted"), unsafe_allow_html=True)
             st.markdown(f"""
+- **Máy chạy camera:** {c.get('machine') or '–'}
 - **Nguồn hình:** `{c['source'] or '–'}`
 - **Vạch kẻ:** {c['line'] or '–'}
 - **Gửi mức cảnh báo:** {'Có' if c['sends_alerts'] else 'Không'}
@@ -41,9 +42,11 @@ def cams():
 cams()
 
 section("Cách chạy camera")
-st.markdown("Mở mỗi camera trong một cửa sổ dòng lệnh riêng, từ thư mục gốc dự án:")
-st.code("python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics", language="bash")
-st.code("python ai_engine/camera_bridge.py --camera-id 2 --source 1 --demographics", language="bash")
+srv = public_api_base()
+st.markdown("Trên **máy đặt camera** (có thể là máy khác máy chủ, cùng mạng), mở cửa sổ dòng lệnh tại thư mục dự án:")
+st.code(f"python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics --api {srv}", language="bash")
+st.code(f"python ai_engine/camera_bridge.py --camera-id 2 --source 0 --demographics --api {srv}", language="bash")
+st.caption(f"Máy chủ: {srv}. Kiểm tra kết nối từ máy camera: python tools/kiem_tra_mang.py {srv}")
 note("<b>--source</b> nhận số webcam (0, 1…), đường dẫn tệp video hoặc địa chỉ RTSP của camera IP. "
      "Trên cửa sổ camera nhấn <b>l</b> để kẻ lại vạch (click 2 đầu vạch rồi click 1 điểm ở phía cầu), "
      "<b>q</b> để thoát. Chỉ camera 1 gửi mức cảnh báo Vàng/Đỏ. Khi mất tín hiệu, camera báo ngay về máy chủ "

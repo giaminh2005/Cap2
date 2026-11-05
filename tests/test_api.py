@@ -193,9 +193,11 @@ def test_bridge_stats_grouping():
 
 
 def test_camera_heartbeat():
-    client.post("/bridge/heartbeat", json={"camera_id": 1, "source": "0", "fps": 14.6, "sends_alerts": True})
+    client.post("/bridge/heartbeat", json={"camera_id": 1, "source": "0", "fps": 14.6, "sends_alerts": True,
+                                           "machine": "LAPTOP-HOAN"})
     cams = {c["camera_id"]: c for c in client.get("/bridge/cameras").json()}
     assert cams[1]["online"] and cams[1]["fps"] == 15 and cams[2]["online"] is False
+    assert cams[1]["machine"] == "LAPTOP-HOAN" and cams[2]["machine"] == ""
 
 
 def test_facade_and_current_stats():
@@ -381,3 +383,18 @@ def test_wait_buckets():
     from backend.routers.insights import wait_bucket
     assert wait_bucket(1) == "Dưới 3 phút" and wait_bucket(4) == "3–5 phút" and wait_bucket(9) == "Trên 5 phút"
     assert wait_bucket(None) is None
+
+
+# ------------------------------------------------- bang LED mascot
+def test_display_state_and_led_page():
+    client.post("/occupancy", json={"count": 23, "status": "CRITICAL"})
+    d = client.get("/display/state").json()
+    assert d["level"] == "CRITICAL" and d["stale"] is False
+    assert {"onbridge", "dem", "capacity", "wait_label", "utc_offset_hours"} <= set(d)
+    page = client.get("/led/")
+    assert page.status_code == 200 and "led.js" in page.text
+    assert client.get("/led/led.js").status_code == 200
+    v = client.get("/led/media/than_idle.webm")
+    assert v.status_code == 200 and len(v.content) > 10000
+    for n in (1, 2, 3, 4):
+        assert client.get(f"/led/media/scene{n}.webm").status_code == 200

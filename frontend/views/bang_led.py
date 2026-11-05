@@ -1,62 +1,26 @@
 """
-frontend/views/bang_led.py  —  MODULE M3 · F2.2 Tin hieu tai cho (FR-05, AC-03.1)
+frontend/views/bang_led.py  —  MODULE M3 · F2.2 Tin hieu tai cho (FR-05, AC-03.1, FR-17)
 Phu trach: HOAN.
-Mo phong den + bang LED song ngu Viet - Anh tai 2 dau cau, doi trang thai
-trong <= 2 giay. Mo toan man hinh (F11) tren man hinh dat tai dau cau.
+Nhung trang LED toan man hinh (backend/led_display/, mascot Linh Than + phong nen dong).
+Tren may dat o dau cau: mo truc tiep http://<may-chu>:8000/led/ bang Chrome/Edge, nhan F11.
 """
 
 import streamlit as st
+import streamlit.components.v1 as components
 
-from common import page_header, safe_get
+from common import note, page_header, public_api_base
 
 page_header("Vận hành · Tín hiệu tại chỗ", "Bảng LED tại chỗ",
-            "Mô phỏng đèn và bảng thông báo song ngữ đặt tại hai đầu cầu. Nhấn F11 để hiển thị toàn màn hình.")
+            "Màn hình đặt tại đầu cầu: Linh Thân chào khách, nhắc đi chậm và mời khách chờ khi cầu đầy. "
+            "Màu, số liệu và câu cảnh báo đổi ngay khi mức cảnh báo thay đổi.")
 
-SIGNS = {
-    "CRITICAL": ("#2A0B07", "#E2483A", "CẦU ĐANG ĐẦY · VUI LÒNG CHỜ", "THE BRIDGE IS FULL · PLEASE WAIT"),
-    "WARNING": ("#2A1E05", "#E8B23A", "CẦU SẮP ĐẦY · XIN ĐI CHẬM, KHÔNG DỪNG LẠI", "NEARLY FULL · PLEASE KEEP MOVING"),
-    "OK": ("#0B1F16", "#4FBF7C", "MỜI QUÝ KHÁCH THAM QUAN", "WELCOME · PLEASE ENTER"),
-}
+led_url = f"{public_api_base()}/led/"
+c1, c2, c3 = st.columns([1.2, 1.2, 3])
+c1.link_button("Mở toàn màn hình", led_url, type="primary", width="stretch")
+c2.link_button("Mở kèm bảng debug", f"{led_url}?debug=1", width="stretch")
+components.iframe(led_url, height=620)
 
-
-@st.fragment(run_every=2)
-def sign():
-    cur = safe_get("/stats/current")
-    cfg = safe_get("/config")
-    if cur is None or cfg is None:
-        return
-    level = cur["current_status"]
-    lv = safe_get("/insights/live") or {}
-    key = "CRITICAL" if level == "CRITICAL" else "WARNING" if level in ("WARNING", "ALERT") else "OK"
-    bg, lamp, vi, en = SIGNS[key]
-    wait_html = ""
-    if key == "CRITICAL" and lv.get("wait_label"):     # FR-17: thoi gian cho du kien theo bac
-        wait_html = (f'<div style="margin-top:22px;font-size:clamp(1rem,2.2vw,1.5rem);letter-spacing:.04em">'
-                     f'THỜI GIAN CHỜ DỰ KIẾN: {lv["wait_label"].upper()} · ESTIMATED WAIT: {lv["wait_label_en"].upper()}</div>')
-    lamps = "".join(
-        f'<div style="width:46px;height:46px;border-radius:50%;margin:0 12px;background:{c if k == key else "#1a1a1a"};'
-        f'box-shadow:{"0 0 26px " + c if k == key else "inset 0 0 8px #000"};border:2px solid #2b2b2b"></div>'
-        for k, c in (("OK", "#4FBF7C"), ("WARNING", "#E8B23A"), ("CRITICAL", "#E2483A")))
-    st.markdown(
-        f"""
-        <div style="background:#0E0C0B;padding:26px;border:1px solid #3A2E25;box-shadow:0 22px 50px rgba(31,26,23,.25)">
-          <div style="display:flex;justify-content:center;margin-bottom:22px">{lamps}</div>
-          <div style="background:{bg};padding:46px 24px 40px;text-align:center;border:1px solid {lamp}55;
-                      font-family:'Be Vietnam Pro',sans-serif;color:{lamp};text-shadow:0 0 14px {lamp}66">
-            <div style="font-size:clamp(3rem,8vw,6rem);font-weight:600;line-height:1;font-variant-numeric:tabular-nums">
-              {cur['current_count']}<span style="font-size:.38em;opacity:.75"> / {cfg['alert_threshold']}</span></div>
-            <div style="font-size:.85rem;letter-spacing:.32em;opacity:.7;margin-top:10px">NGƯỜI TRÊN CẦU · PEOPLE ON THE BRIDGE</div>
-            <div style="width:60px;height:1px;background:{lamp};opacity:.5;margin:26px auto"></div>
-            <div style="font-size:clamp(1.3rem,3.4vw,2.4rem);font-weight:600;letter-spacing:.04em">{vi}</div>
-            <div style="font-size:clamp(1rem,2.4vw,1.6rem);opacity:.85;margin-top:10px;letter-spacing:.06em">{en}</div>
-            {wait_html}
-          </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-    if cur["status_stale"]:
-        st.caption("Chưa nhận được mức cảnh báo từ camera chân cầu 1 trong 30 giây qua; bảng đang hiển thị trạng thái Bình thường.")
-
-
-sign()
+note("Trên máy đặt ở đầu cầu: mở <code>" + led_url + "</code> bằng Chrome hoặc Edge rồi nhấn <b>F11</b>. "
+     "Địa chỉ trên đã tự đổi theo máy chủ bạn đang truy cập, dùng được cho máy LED khác trong cùng mạng. "
+     "Thêm <code>?scene=3</code> để khóa một cảnh, <code>?debug=1</code> (hoặc phím <b>D</b>) để mở bảng giả lập "
+     "Xanh / Vàng / Đỏ khi trình diễn. Đồng hồ và lịch đổi cảnh ngày/đêm theo giờ Việt Nam của máy chủ.")

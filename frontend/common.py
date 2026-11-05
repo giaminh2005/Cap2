@@ -23,7 +23,23 @@ try:
 except ImportError:
     HAS_PLOTLY = False
 
-API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")
+API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")   # giao dien (chay o may chu) goi backend
+
+
+def public_api_base() -> str:
+    """Dia chi backend DUNG CHO TRINH DUYET cua nguoi xem. Khi API_BASE la 127.0.0.1 ma nguoi xem
+    mo web tu may khac (vd http://192.168.1.10:8501), doi 127.0.0.1 thanh dia chi ho dang dung."""
+    from urllib.parse import urlparse
+    u = urlparse(API_BASE)
+    if u.hostname not in ("127.0.0.1", "localhost"):
+        return API_BASE
+    try:
+        host = (st.context.headers.get("Host") or "").split(":")[0]
+    except Exception:
+        host = ""
+    if not host or host in ("127.0.0.1", "localhost"):
+        return API_BASE
+    return f"{u.scheme}://{host}:{u.port or 8000}"
 
 # ------------------------------------------------------------------- bang mau
 C = {
