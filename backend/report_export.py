@@ -59,8 +59,8 @@ def report_tables(r: dict) -> dict:
     by15 = pd.DataFrame(r["by_15min"]).rename(columns={"slot": "Khung 15 phút", "entries": "Lượt vào"})
     demo_rows = [("Nữ", dem["gender"]["Woman"]), ("Nam", dem["gender"]["Man"]),
                  ("Không xác định", dem["unknown"]),
-                 ("Trong nước (ước lượng)", dem["origin"]["Trong nuoc"]),
-                 ("Nước ngoài (ước lượng)", dem["origin"]["Nuoc ngoai"])]
+                 ("Trong nước/châu Á (ước lượng)", dem["origin"]["Trong nuoc"]),
+                 ("Quốc tế (ước lượng)", dem["origin"]["Nuoc ngoai"])]
     demo_rows += [(f"Tuổi {k}", v) for k, v in dem["age_range"].items() if v]
     demo = pd.DataFrame(demo_rows, columns=["Nhóm", "Số lượt"])
     demo["Tỷ lệ"] = [f"{v / ident * 100:.1f}%" if n != "Không xác định" else "không tính" for n, v in demo_rows]
@@ -144,7 +144,7 @@ def to_pdf(r: dict) -> bytes:
                 table.row([str(v) for v in row.values])
         pdf.ln(4)
     pdf.set_font(family, "", 8)
-    pdf.multi_cell(0, 4.5, "Ghi chú: “Trong nước / nước ngoài” là ước lượng từ nhóm khu vực rộng của mô hình AI, "
+    pdf.multi_cell(0, 4.5, "Ghi chú: “Trong nước/châu Á – Quốc tế” là ước lượng từ nhóm khu vực rộng của mô hình AI, "
                            "không phải quốc tịch. Hệ thống không lưu ảnh hay đặc trưng khuôn mặt.")
     return bytes(pdf.output())
 

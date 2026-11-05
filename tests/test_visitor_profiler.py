@@ -57,7 +57,7 @@ def test_profile_saved_only_after_entering():
     p.observe(1, FRAME, BOX, 6)
     p.mark_entered(1, 7)
     assert len(posts) == 1                      # khong luu lap
-    assert p.label(1) == ["VÀO CẦU · ID 1", "Nữ · 25-34", "Chưa rõ trong/ngoài nước"]
+    assert p.label(1) == ["VÀO CẦU · ID 1", "Nữ · 25-34", "Chưa rõ nguồn khách"]
 
 
 def test_unknown_when_confidence_never_reached():
@@ -100,7 +100,7 @@ def test_origin_shown_and_saved():
     """Nhom Dong A -> 'Trong nuoc', con lai -> 'Nuoc ngoai'; hien ngay khi du tin cay."""
     p, posts = make(FakeEngine(ready_after=1, region="Phuong Tay"))
     p.observe(5, FRAME, BOX, 0)
-    assert p.label(5) == ["ID 5", "Nữ · 25-34", "Nước ngoài"]      # hien truoc khi vao cau
+    assert p.label(5) == ["ID 5", "Nữ · 25-34", "Quốc tế"]      # hien truoc khi vao cau
     assert posts == []
     p.mark_entered(5, 1)
     assert posts[0][1]["origin"] == "Nuoc ngoai"

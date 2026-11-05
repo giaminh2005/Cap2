@@ -1,6 +1,6 @@
 # SmartCau AI — Camera AI quản lý đám đông Chùa Cầu (Nhóm 50 · 49K22.3)
 
-Hệ thống đếm khách trên Chùa Cầu bằng 2 camera đặt ở 2 chân cầu, cảnh báo quá tải Vàng/Đỏ, ước lượng giới tính, độ tuổi, khách trong nước / nước ngoài, và trang web quản lý cho người trực, quản lý và quản trị viên.
+Hệ thống đếm khách trên Chùa Cầu bằng 2 camera đặt ở 2 chân cầu, cảnh báo quá tải Vàng/Đỏ, ước lượng giới tính, độ tuổi, khách trong nước/châu Á hay quốc tế, và trang web quản lý cho người trực, quản lý và quản trị viên.
 
 ## Kiến trúc 3 lớp
 
@@ -73,8 +73,10 @@ Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có t
 |---|---|---|
 | 1 | `uvicorn backend.main:app --reload --port 8000` | API: http://127.0.0.1:8000/docs |
 | 2 | `streamlit run frontend/app.py` | Web: http://localhost:8501 |
-| 3 | `python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics` | camera chân cầu 1 (gửi cảnh báo) |
-| 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1 --demographics` | camera chân cầu 2 |
+| 3 | `python ai_engine/camera_bridge.py --camera-id 1 --source 0` | camera chân cầu 1 (gửi cảnh báo) |
+| 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1` | camera chân cầu 2 |
+
+Nhận diện giới tính / tuổi / nguồn khách bật sẵn; thêm `--no-demographics` nếu chỉ cần đếm. Các ghi chú, hướng dẫn và mã yêu cầu (FR, BRULE, KPI) đã gỡ khỏi giao diện web được lưu ở `docs/GHI_CHU_GIAO_DIEN.md`.
 
 - **Đăng nhập lần đầu:** `admin` / `admin123`, hệ thống bắt đổi mật khẩu. Tạo thêm tài khoản Quản lý, Người trực ở trang **Tài khoản**.
 - `--source` nhận số webcam, đường dẫn video hoặc địa chỉ `rtsp://...`.
@@ -97,17 +99,21 @@ Một máy làm **máy chủ** (`uvicorn backend.main:app --host 0.0.0.0 --port 
 
 ## Lưu ý về nhận diện
 
-- **Trong nước / nước ngoài là ước lượng**: mô hình chỉ phân được nhóm khu vực rộng và gộp khách Việt Nam với khách Hàn, Nhật, Trung, nên không xác định được quốc tịch.
+- **Trong nước/châu Á – Quốc tế là ước lượng**: mô hình chỉ phân được nhóm khu vực rộng và gộp khách Việt Nam với khách Hàn, Nhật, Trung, nên không xác định được quốc tịch.
 - Kết quả có độ tin cậy dưới 70% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
 - Hệ thống không lưu ảnh hay đặc trưng khuôn mặt; khung hình chỉ xử lý trong bộ nhớ.
 
-## Bảng LED tại đầu cầu (mascot Linh Thân)
+## Bảng LED hai đầu cầu (mascot Linh Thân + Linh Khuyển)
 
-- Mở **http://127.0.0.1:8000/led/** bằng Chrome hoặc Edge trên máy đặt ở đầu cầu, nhấn **F11** để toàn màn hình. Nếu máy LED khác máy chủ, thay `127.0.0.1` bằng IP của máy chủ. Trang này không cần đăng nhập.
-- Linh Thân chào khách, nhắc đi chậm khi Vàng, giơ tay ngăn khi Đỏ, cúi chào cảm ơn khi hết quá tải. Câu thoại chọn ngẫu nhiên, không lặp câu vừa nói, tự đổi "Chào buổi sáng / chiều / tối".
+- Mỗi đầu cầu một màn hình, mở bằng Chrome hoặc Edge rồi nhấn **F11**:
+  - Đầu cầu 1: **http://127.0.0.1:8000/led/?dau=1** (Linh Thân đón khách, Linh Khuyển ra ngăn khi Đỏ, đúng bảng hướng dẫn).
+  - Đầu cầu 2: **http://127.0.0.1:8000/led/?dau=2** (đổi vai: Linh Khuyển đón khách, Linh Thân ra ngăn khi Đỏ).
+  - Xem song song cả hai: **http://127.0.0.1:8000/led/hai-man-hinh.html**.
+  Nếu máy LED khác máy chủ, thay `127.0.0.1` bằng IP của máy chủ. Trang này không cần đăng nhập.
+- Khởi động: nhân vật đón khách **đi vào** rồi vẫy tay giới thiệu. Xanh: đứng chờ, xen vẫy tay / cúi chào. Vàng: quạt và ra hiệu đi chậm mỗi 20 giây. **Lên Đỏ**: biển báo đổi ngay; nhân vật đón khách vẫy tay **đi ra**, nhân vật canh **đi vào** rồi giơ tay ngăn mỗi 18 giây. **Đỏ hạ xuống**: nhân vật canh cúi chào cảm ơn, đi ra, nhân vật đón khách đi vào lại. Câu thoại chọn ngẫu nhiên, không lặp câu vừa nói, tự đổi "Chào buổi sáng / chiều / tối".
 - **Phông nền theo giờ:** ban ngày (06:00–17:30) dùng cảnh 1, xen cảnh 4 mỗi 5 phút; ban đêm dùng cảnh 3, xen cảnh 2. Mức Vàng thêm tông ấm. Mức Đỏ chạy **tour 4 cảnh**, mỗi cảnh 30 giây, có thuyết minh. Đổi cảnh bằng hiệu ứng mờ chéo 0,8 giây đúng lúc video hết vòng lặp.
-- `?scene=3` khóa một cảnh; `?debug=1` hoặc phím **D** mở bảng giả lập Xanh / Vàng / Đỏ, +1 khách, chọn cảnh.
-- Muốn đổi câu thoại, giờ ngày/đêm, thời lượng: sửa `CONFIG` ở đầu tệp `backend/led_display/led.js`. Clip Linh Khuyển (khi có): thả tệp vào `backend/led_display/media/` rồi điền tên ở `CONFIG.clips.khuyen`, mức Đỏ sẽ tự đổi sang Linh Khuyển.
+- `&scene=3` khóa một cảnh; `&debug=1` hoặc phím **D** mở bảng giả lập Xanh / Vàng / Đỏ, +1 khách, chọn cảnh, thử từng clip (kể cả `walk_loop`) và "đi ra → đi vào".
+- Muốn đổi câu thoại, giờ ngày/đêm, thời lượng, vai nhân vật mỗi đầu cầu (`CONFIG.ends`): sửa `CONFIG` ở đầu tệp `backend/led_display/led.js`.
 - Tệp gốc: `media/mascot/`, `media/phong_nen/`.
 
 ## Tính năng thông minh trên giao diện

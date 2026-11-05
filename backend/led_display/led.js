@@ -1,11 +1,13 @@
 /* =====================================================================
- * Bang LED tai dau cau — Linh Than (mascot) + phong nen dong + so lieu
+ * Bang LED tai dau cau — Linh Than + Linh Khuyen (mascot) + phong nen dong + so lieu
  * MODULE M3 · F2.2 (FR-05, FR-17). Phu trach: HOAN.
  *
- * Mo:   http://<may-chu>:8000/led/            (Chrome/Edge, F11 toan man hinh)
+ * Mo:   http://<may-chu>:8000/led/?dau=1     man hinh dau cau 1 (Chrome/Edge, F11)
+ *       http://<may-chu>:8000/led/?dau=2     man hinh dau cau 2
+ *       http://<may-chu>:8000/led/hai-man-hinh.html   xem 2 man hinh song song
  * Tham so URL:  ?scene=3   khoa canh 3      ?debug=1   mo bang debug (hoac nhan phim D)
  *               ?api=http://192.168.1.5:8000  khi trang mo tu may khac
- * Sua cau thoai, gio ngay/dem, thu tu canh... trong CONFIG ben duoi.
+ * Sua cau thoai, gio ngay/dem, vai nhan vat moi dau cau... trong CONFIG ben duoi.
  * ===================================================================== */
 const CONFIG = {
   apiBase: new URLSearchParams(location.search).get("api") || "",
@@ -24,16 +26,36 @@ const CONFIG = {
     4: { name: "Chùa Cầu", time: "day", src: "media/scene4", tour: "Chùa Cầu với tượng khỉ và chó canh giữ hai đầu cầu." },
   },
   clock: { day: { main: 1, alt: 4 }, night: { main: 3, alt: 2 } },
-  // Clip nhan vat. null = chua co -> dung clip thay the. Linh Khuyen: tha file vao media/ roi dien ten o day.
+  /* Moi dau cau 1 man hinh. host = nhan vat don khach (Xanh/Vang), guard = nhan vat ra ngan khi Do.
+   * Dau cau 1 dung dung bang huong dan: Linh Than don khach, Linh Khuyen ra ngan.
+   * Dau cau 2 doi vai (tuong cho o dau nay). Muon 2 man hinh giong nhau: dat dau 2 = { host:"than", guard:"khuyen" }. */
+  ends: {
+    1: { label: "ĐẦU CẦU 1", host: "than", guard: "khuyen", scene: 0 },
+    2: { label: "ĐẦU CẦU 2", host: "khuyen", guard: "than", scene: 0 },
+  },
+  names: { than: "Linh Thân", khuyen: "Linh Khuyển" },
+  /* Clip nhan vat (WebM nen trong suot). Clip di (walkOn/walkOff/walkLoop) rong hon khung nhan vat:
+   * shift = do lech ngang (px theo khung cao 720) de vi tri dung yen khop voi clip idle; arrive = giay da toi cho dung. */
   clips: {
-    than: { idle: "media/than_idle.webm", wave: "media/than_wave.webm", bow: "media/than_bow.webm",
-            yellow: "media/than_yellow.webm", red: "media/than_red.webm", walkIn: null, walkOut: null },
-    khuyen: { idle: null, stop: null, bow: null, walkIn: null, walkOut: null },
+    than: {
+      idle: "media/than_idle.webm", wave: "media/than_wave.webm", bow: "media/than_bow.webm",
+      yellow: "media/than_yellow.webm", red: "media/than_red.webm",
+      walkOn: { src: "media/than_walk_on.webm", shift: 23, arrive: 5.6 },
+      walkOff: { src: "media/than_walk_off.webm", shift: 135, from: 2.5 },
+      walkLoop: { src: "media/than_walk_loop.webm", shift: 169 },
+    },
+    khuyen: {
+      idle: "media/khuyen_idle.webm", wave: "media/khuyen_wave.webm", bow: "media/khuyen_bow.webm",
+      yellow: "media/khuyen_yellow.webm", red: "media/khuyen_red.webm",
+      walkOn: { src: "media/khuyen_walk_on.webm", shift: 25, arrive: 4.2 },
+      walkOff: { src: "media/khuyen_walk_off.webm", shift: -29, from: 2.5 },
+      walkLoop: { src: "media/khuyen_walk_loop.webm", shift: 37 },
+    },
   },
   timing: { greenActMin: 25, greenActMax: 35, yellowRepeat: 20, redRepeat: 18, quietAfter: 60, quietRepeat: 20,
             newGuestGap: 30, bubbleMs: 8000 },
   lines: {
-    intro: ["{chao}! Mình là Linh Thân, rất vui được đón bạn đến Chùa Cầu."],
+    intro: ["{chao}! Mình là {ten}, rất vui được đón bạn đến Chùa Cầu."],
     green: ["{chao}! Cầu đang thông thoáng, mời bạn thong thả dạo bước. Hiện có {onbridge} khách trên cầu.",
             "Chùa Cầu hân hạnh đón bạn. Nhớ lưu lại thật nhiều khoảnh khắc đẹp nhé!"],
     greenBow: ["Xin kính chào quý khách. Chúc bạn một chuyến tham quan thật trọn vẹn."],
@@ -56,6 +78,9 @@ const CONFIG = {
 
 /* ---------------------------------------------------------------- tien ich */
 const Q = new URLSearchParams(location.search);
+const END_NO = CONFIG.ends[Q.get("dau")] ? Number(Q.get("dau")) : 1;
+const END = CONFIG.ends[END_NO];
+if (END.scene) CONFIG.sceneMode = "fixed:" + END.scene;
 if (/^[1-4]$/.test(Q.get("scene") || "")) CONFIG.sceneMode = "fixed:" + Q.get("scene");
 const $ = (id) => document.getElementById(id);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -74,7 +99,10 @@ function vnNow() { const d = new Date(Date.now() + utcOffsetH * 3600e3); return 
 const toMin = (hhmm) => { const [h, m] = hhmm.split(":").map(Number); return h * 60 + m; };
 function isDay() { const t = vnNow(); const x = t.h * 60 + t.m; return x >= toMin(CONFIG.dayStart) && x < toMin(CONFIG.dayEnd); }
 function chao() { const h = vnNow().h; return h >= 4 && h < 11 ? "Chào buổi sáng" : h >= 11 && h < 18 ? "Chào buổi chiều" : "Chào buổi tối"; }
-function fill(text) { return text.replace("{chao}", chao()).replace("{onbridge}", S.onbridge).replace("{dem}", S.dem); }
+function fill(text) {
+  return text.replaceAll("{chao}", chao()).replaceAll("{onbridge}", S.onbridge).replaceAll("{dem}", S.dem)
+    .replaceAll("{ten}", CONFIG.names[Mascot.who || END.host]);
+}
 const levelOf = (code) => (code === "CRITICAL" ? "red" : code === "WARNING" || code === "ALERT" ? "yellow" : "green");
 
 /* ---------------------------------------------------------------- loi thoai */
@@ -93,34 +121,42 @@ function say(key, ms = CONFIG.timing.bubbleMs) {
 }
 
 /* ---------------------------------------------------------------- mascot */
+const STATIC_W = 644, CROP_X = 293.6, WIDE_W = 1182;   // kich thuoc clip da xu ly (cao 720)
 const Mascot = {
-  vids: {}, current: null, busy: false, token: 0,
+  vids: {}, meta: {}, current: null, who: null, busy: false, token: 0,
   init() {
     const box = $("mascot");
     for (const [who, set] of Object.entries(CONFIG.clips)) {
-      for (const [name, src] of Object.entries(set)) {
-        if (!src) continue;
+      for (const [name, c] of Object.entries(set)) {
+        if (!c) continue;
+        const src = typeof c === "string" ? c : c.src;
         const v = document.createElement("video");
         Object.assign(v, { src, muted: true, playsInline: true, preload: "auto" });
-        v.loop = name === "idle";
+        v.loop = name === "idle" || name === "walkLoop";
+        if (typeof c === "object") {       // clip di: rong hon khung, dat lech de khop vi tri dung yen
+          v.classList.add("wide");
+          v.style.left = ((-CROP_X + (c.shift || 0)) / STATIC_W * 100).toFixed(2) + "%";
+          v.style.width = (WIDE_W / STATIC_W * 100).toFixed(2) + "%";
+        }
         box.appendChild(v);
-        this.vids[`${who}.${name}`] = v;
+        this.vids[`${who}.${name}`] = v; this.meta[`${who}.${name}`] = typeof c === "object" ? c : {};
       }
     }
-    this.show("than.idle");
   },
   has(key) { return !!this.vids[key]; },
+  hideAll() { for (const x of Object.values(this.vids)) { x.classList.remove("on"); x.pause(); } this.current = null; },
   show(key) {
-    const v = this.vids[key] || this.vids["than.idle"];
+    const v = this.vids[key] || this.vids[`${this.who || END.host}.idle`];
     for (const x of Object.values(this.vids)) if (x !== v) { x.classList.remove("on"); if (!x.loop) x.pause(); }
     v.classList.add("on");
     if (v.paused) v.play().catch(() => needTap());
     this.current = key;
     return v;
   },
-  /** Phat 1 clip hanh dong roi ve idle. Clip moi (chuyen muc) se ngat clip dang phat. */
-  async play(key, line) {
-    const my = ++this.token;
+  idle() { if (this.who) this.show(`${this.who}.idle`); },
+  /** Phat 1 clip hanh dong cua nhan vat dang dung tren man hinh roi ve idle. Clip moi se ngat clip dang phat. */
+  async play(action, line) {
+    const my = ++this.token, key = `${this.who}.${action}`;
     this.busy = true;
     const v = this.vids[key];
     if (line) say(line);
@@ -129,10 +165,39 @@ const Mascot = {
       await new Promise((res) => { const done = () => { v.removeEventListener("ended", done); res(); };
         v.addEventListener("ended", done); setTimeout(done, (v.duration || 10) * 1000 + 500); });
     }
-    if (my === this.token) { this.show("than.idle"); this.busy = false; }
+    if (my === this.token) { this.idle(); this.busy = false; }
   },
-  async walkOut() { const m = $("mascot"); m.classList.add("walking", "out"); await sleep(1300); m.classList.remove("walking"); },
-  async walkIn() { const m = $("mascot"); m.classList.add("walking"); m.classList.remove("out"); await sleep(1300); m.classList.remove("walking"); },
+  /** Cho clip v chay toi giay `until` (hoac het clip). */
+  waitClip(v, until) {
+    return new Promise((res) => {
+      const t0 = Date.now(), limit = ((until || v.duration || 10) + 1.5) * 1000;
+      const check = () => {
+        if (v.ended || (until && v.currentTime >= until) || Date.now() - t0 > limit) return res();
+        requestAnimationFrame(check);
+      };
+      check();
+    });
+  },
+  /** Nhan vat dang dung vay tay roi di ra (walk_off). Khong co clip -> truot ra. */
+  async walkOff() {
+    if (!this.who) return;
+    const key = `${this.who}.walkOff`, v = this.vids[key];
+    this.token++; this.busy = true;
+    if (v) { v.currentTime = this.meta[key].from || 0; this.show(key); await this.waitClip(v); }
+    else { const m = $("mascot"); m.classList.add("walking", "out"); await sleep(1300); m.classList.remove("walking"); }
+    this.hideAll(); $("mascot").classList.remove("out", "walking"); this.who = null; this.busy = false;
+  },
+  /** Nhan vat `who` di vao tu ben trai toi cho dung (walk_on) roi dung cho. */
+  async walkOn(who) {
+    const key = `${who}.walkOn`, v = this.vids[key];
+    this.token++; this.busy = true; this.who = who;
+    if (v) { v.currentTime = 0; this.show(key); await this.waitClip(v, this.meta[key].arrive); }
+    else { const m = $("mascot"); this.show(`${who}.idle`); m.classList.add("out"); await sleep(50);
+           m.classList.add("walking"); m.classList.remove("out"); await sleep(1300); m.classList.remove("walking"); }
+    this.idle(); this.busy = false;
+  },
+  /** Doi nhan vat: nguoi dang dung di ra, `who` di vao. */
+  async swapTo(who) { if (this.who === who) return; await this.walkOff(); await this.walkOn(who); },
 };
 
 /* ---------------------------------------------------------------- phong nen */
@@ -189,48 +254,58 @@ function applySign() {
   $("chipOffline").hidden = !S.offline;
 }
 
-async function onLevelChange(prev, next) {
+/* Doi muc chay noi tiep (hang doi): doan di ra / di vao khong bi cat ngang giua chung. */
+let levelChain = Promise.resolve();
+function onLevelChange(prev, next) {
+  if (next === "red") startTour(); else stopTour();   // phong nen doi ngay, mascot dien sau
+  $("bubble").classList.remove("show");               // bo cau thoai cu cua muc truoc
+  queueMascot(() => handleLevel(prev, next));
+}
+function queueMascot(fn) { levelChain = levelChain.then(fn).catch(console.error); }
+
+async function handleLevel(prev, next) {
   const T = CONFIG.timing;
-  Mascot.token++;                       // ngat hanh dong dang phat
-  if (next === "red") {
-    startTour();
-    if (Mascot.has("khuyen.stop")) {   // co du clip Linh Khuyen: doi nhan vat
-      await Mascot.walkOut(); Mascot.show("khuyen.idle"); await Mascot.walkIn();
-      Mascot.play("khuyen.stop", "toRed");
-    } else {
-      Mascot.play("than.red", "toRed");
+  S.seq = true;
+  try {
+    if (next === "red") {
+      await Mascot.swapTo(END.guard);              // host di ra, guard di vao (bien bao da doi mau tu truoc)
+      if (S.level === "red") Mascot.play("red", "toRed");
+      S.nextAct = Date.now() + T.redRepeat * 1000;
+      return;
     }
-    S.nextAct = Date.now() + T.redRepeat * 1000;
-    return;
-  }
-  stopTour();
-  if (prev === "red") {
-    await Mascot.play(Mascot.has("khuyen.bow") ? "khuyen.bow" : "than.bow", "redDown");
-    if (Mascot.has("khuyen.walkOut")) { await Mascot.walkOut(); Mascot.show("than.idle"); await Mascot.walkIn(); }
-    if (S.level !== next) return;
-    say(next === "yellow" ? "yellow" : "green");
-  } else if (next === "yellow") {
-    Mascot.play("than.yellow", "toYellow");
-  } else if (prev === "yellow" && next === "green") {
-    Mascot.play("than.wave", "yellowToGreen");
-  }
-  S.nextAct = Date.now() + (next === "yellow" ? T.yellowRepeat : rand(T.greenActMin, T.greenActMax)) * 1000;
+    if (prev === "red") {
+      if (Mascot.who !== END.host) {
+        await Mascot.play("bow", "redDown");     // guard cui chao cam on, di ra; host di vao
+        await Mascot.swapTo(END.host);
+      } else await Mascot.play("bow", "redDown");
+      if (S.level !== next) return;
+      say(next === "yellow" ? "yellow" : "green");
+      if (next === "yellow") Mascot.play("yellow");
+    } else if (next === "yellow") {
+      await Mascot.swapTo(END.host);
+      Mascot.play("yellow", "toYellow");
+    } else if (prev === "yellow" && next === "green") {
+      await Mascot.swapTo(END.host);
+      Mascot.play("wave", "yellowToGreen");
+    }
+    S.nextAct = Date.now() + (next === "yellow" ? T.yellowRepeat : rand(T.greenActMin, T.greenActMax)) * 1000;
+  } finally { S.seq = false; }
 }
 
 function periodic() {
   const T = CONFIG.timing, now = Date.now();
-  if (!S.booted || S.offline || Mascot.busy) return;
+  if (!S.booted || S.offline || S.seq || Mascot.busy || !Mascot.who) return;
   if (S.level === "green") {
     const quiet = now - S.lastDemUp > T.quietAfter * 1000;
     if (now >= S.nextAct) {
       const bow = Math.random() < 0.35;
-      Mascot.play(bow ? "than.bow" : "than.wave", quiet ? "quiet" : bow ? "greenBow" : "green");
+      Mascot.play(bow ? "bow" : "wave", quiet ? "quiet" : bow ? "greenBow" : "green");
       S.nextAct = now + (quiet ? T.quietRepeat : rand(T.greenActMin, T.greenActMax)) * 1000;
     }
   } else if (S.level === "yellow" && now >= S.nextAct) {
-    Mascot.play("than.yellow", "yellow"); S.nextAct = now + T.yellowRepeat * 1000;
+    Mascot.play("yellow", "yellow"); S.nextAct = now + T.yellowRepeat * 1000;
   } else if (S.level === "red" && now >= S.nextAct) {
-    Mascot.play(Mascot.has("khuyen.stop") ? "khuyen.stop" : "than.red", "red"); S.nextAct = now + T.redRepeat * 1000;
+    Mascot.play("red", "red"); S.nextAct = now + T.redRepeat * 1000;
   }
 }
 
@@ -260,7 +335,7 @@ function desiredScene() {
 function sceneTick() {
   document.body.classList.toggle("night", !isDay());
   BG.request(desiredScene()); BG.tick();
-  if (S.tour && BG.cur && S.tour.announced !== BG.cur && !BG.pending && !Mascot.busy) {
+  if (S.tour && BG.cur && S.tour.announced !== BG.cur && !BG.pending && !Mascot.busy && !S.seq) {
     S.tour.announced = BG.cur;                     // dung cho + thuyet minh canh (doi dien xong moi noi)
     say(CONFIG.scenes[BG.cur].tour);
     S.nextAct = Math.max(S.nextAct, Date.now() + 9000);   // khong de cau "vui long cho" de len ngay
@@ -282,8 +357,8 @@ async function poll() {
     if (dem > S.dem && S.booted) {
       S.lastDemUp = Date.now();
       const T = CONFIG.timing;
-      if (S.level === "green" && !Mascot.busy && Date.now() - S.lastGuestLine > T.newGuestGap * 1000) {
-        S.dem = dem; S.lastGuestLine = Date.now(); Mascot.play("than.wave", "guest");
+      if (S.level === "green" && !Mascot.busy && !S.seq && Mascot.who && Date.now() - S.lastGuestLine > T.newGuestGap * 1000) {
+        S.dem = dem; S.lastGuestLine = Date.now(); Mascot.play("wave", "guest");
       }
     }
     S.dem = dem;
@@ -300,16 +375,21 @@ async function poll() {
 
 async function boot() {
   Mascot.init(); BG.init();
+  $("endLabel").textContent = END.label;
+  document.title = `Chùa Cầu · ${END.label.toLowerCase().replace(/^./, (c) => c.toUpperCase())}`;
   await poll();
   BG.start(desiredScene());
   applySign();
-  $("mascot").classList.add("out");
   await sleep(400);
-  if (Mascot.has("than.walkIn")) Mascot.play("than.walkIn");
-  await Mascot.walkIn();
   S.booted = true;
-  if (S.level === "red") onLevelChange("green", "red");
-  else { Mascot.play("than.wave", "intro"); S.nextAct = Date.now() + rand(CONFIG.timing.greenActMin, CONFIG.timing.greenActMax) * 1000; }
+  if (S.level === "red") { onLevelChange("green", "red"); }
+  else queueMascot(async () => {               // Khoi dong: host di vao -> vay tay + cau gioi thieu
+    S.seq = true;
+    await Mascot.walkOn(S.level === "red" ? END.guard : END.host);
+    S.seq = false;
+    Mascot.play("wave", "intro");
+    S.nextAct = Date.now() + rand(CONFIG.timing.greenActMin, CONFIG.timing.greenActMax) * 1000;
+  });
   setInterval(poll, CONFIG.pollMs);
   setInterval(() => { periodic(); sceneTick(); clockTick(); }, 500);
 }
@@ -328,10 +408,15 @@ const DBG = {
     el.innerHTML = `<b>BẢNG DEBUG</b> (phím D)<div id="dbgInfo" class="row"></div>
       <div class="row">Giả lập mức: <button data-l="OK">Xanh</button><button data-l="WARNING">Vàng</button><button data-l="CRITICAL">Đỏ</button><button data-l="">Tự động</button></div>
       <div>Khách: <button data-g="1">+1 khách</button></div>
+      <div class="row">Thử clip: ${["idle", "wave", "bow", "yellow", "red", "walkLoop"].map((a) => `<button data-c="${a}">${a}</button>`).join("")}
+        <button data-w="1">đi ra → đi vào</button></div>
       <div class="row">Cảnh: <button data-s="clock">Theo giờ</button>${[1, 2, 3, 4].map((n) => `<button data-s="fixed:${n}">${n}</button>`).join("")}</div>
       <div>Tour theo giờ: <button id="dbgTour"></button></div>`;
     el.querySelectorAll("[data-l]").forEach((b) => (b.onclick = () => { S.override = b.dataset.l || null; poll(); }));
     el.querySelectorAll("[data-g]").forEach((b) => (b.onclick = () => { S.overrideBump++; poll(); }));
+    el.querySelectorAll("[data-c]").forEach((b) => (b.onclick = () => { if (!S.seq && Mascot.who) Mascot.play(b.dataset.c); }));
+    el.querySelectorAll("[data-w]").forEach((b) => (b.onclick = async () => {
+      if (S.seq || !Mascot.who) return; const w = Mascot.who; S.seq = true; await Mascot.walkOff(); await Mascot.walkOn(w); S.seq = false; }));
     el.querySelectorAll("[data-s]").forEach((b) => (b.onclick = () => { CONFIG.sceneMode = b.dataset.s; if (S.level === "red") startTour(); }));
     $("dbgTour").onclick = () => { CONFIG.tourFollowsClock = !CONFIG.tourFollowsClock; };
     this.built = true;
@@ -341,7 +426,7 @@ const DBG = {
     if (!this.built) this.build();
     $("dbgInfo").innerHTML = `Mức: <b>${S.level}</b>${S.override ? " (giả lập)" : ""} · trên cầu ${S.onbridge}/${S.capacity} · dem ${S.dem}<br>
       Cảnh: <b>${BG.cur}</b> ${BG.pending ? "→ " + BG.pending : ""} · ${CONFIG.sceneMode} · ${isDay() ? "ngày" : "đêm"}${S.tour ? " · tour" : ""}<br>
-      Mascot: ${Mascot.current}${Mascot.busy ? " (đang diễn)" : ""} · mất kết nối: ${S.offline}`;
+      ${END.label} · Mascot: ${Mascot.current}${Mascot.busy || S.seq ? " (đang diễn)" : ""} · mất kết nối: ${S.offline}`;
     $("dbgTour").textContent = CONFIG.tourFollowsClock ? "đang bật" : "đang tắt";
   },
 };

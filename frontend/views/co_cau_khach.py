@@ -10,13 +10,13 @@ from datetime import timedelta
 import pandas as pd
 import streamlit as st
 
-from common import (AGE_ORDER, COLORS, HAS_PLOTLY, fmt_int, kpi, kpi_row, local_today, note, page_header,
+from common import (AGE_ORDER, COLORS, HAS_PLOTLY, fmt_int, kpi, kpi_row, local_today, page_header,
                     safe_get, style_fig)
 
 if HAS_PLOTLY:
     import plotly.graph_objects as go
 
-page_header("Phân tích · Du khách", "Cơ cấu khách", "Giới tính, nhóm tuổi và tỷ lệ khách trong nước, nước ngoài của khách vào cầu.")
+page_header("Phân tích · Du khách", "Cơ cấu khách", "Giới tính, nhóm tuổi và tỷ lệ khách trong nước/châu Á và quốc tế của khách vào cầu.")
 
 today = local_today()
 picked = st.date_input("Khoảng thời gian", value=(today - timedelta(days=6), today), format="DD/MM/YYYY")
@@ -43,7 +43,7 @@ kpi_row([
 ])
 
 if not d["total"]:
-    st.info("Chưa có hồ sơ khách nào trong khoảng thời gian này. Chạy camera chân cầu với tùy chọn --demographics.")
+    st.info("Chưa có hồ sơ khách nào trong khoảng thời gian này.")
     st.stop()
 
 
@@ -63,11 +63,11 @@ if HAS_PLOTLY:
         st.plotly_chart(donut(["Nữ", "Nam"], [d["gender"]["Woman"], d["gender"]["Man"]],
                               [COLORS["primary"], COLORS["blue"]], "Giới tính"), width="stretch")
     with c2, st.container(border=True):
-        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Trong nước / Nước ngoài · ước lượng</div>', unsafe_allow_html=True)
+        st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Trong nước/châu Á · Quốc tế · ước lượng</div>', unsafe_allow_html=True)
         o = d["origin"]
         unknown_origin = ident - o["Trong nuoc"] - o["Nuoc ngoai"]
-        st.plotly_chart(donut(["Trong nước", "Nước ngoài", "Chưa rõ"], [o["Trong nuoc"], o["Nuoc ngoai"], unknown_origin],
-                              [COLORS["moss"], COLORS["ochre"], "#CFC6BA"], "Trong nước / Nước ngoài"),
+        st.plotly_chart(donut(["Trong nước/châu Á", "Quốc tế", "Chưa rõ"], [o["Trong nuoc"], o["Nuoc ngoai"], unknown_origin],
+                              [COLORS["moss"], COLORS["ochre"], "#CFC6BA"], "Nguồn khách"),
                         width="stretch")
     with c3, st.container(border=True):
         st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Nhóm tuổi</div>', unsafe_allow_html=True)
@@ -91,8 +91,3 @@ if HAS_PLOTLY:
 else:
     st.bar_chart(pd.Series(d["gender"]))
 
-note("<b>Lưu ý về “trong nước / nước ngoài”:</b> đây là ước lượng từ nhóm khu vực rộng của mô hình AI "
-     "(nhóm Đông Á → trong nước, các nhóm khác → nước ngoài). Mô hình không phân biệt được khách Việt Nam với "
-     "khách Hàn Quốc, Nhật Bản, Trung Quốc, nên tỷ lệ khách trong nước thường bị tính cao hơn thực tế. "
-     "Số liệu chỉ dùng để xem xu hướng, không dùng để xác định quốc tịch từng người. "
-     "Hệ thống không lưu ảnh hay đặc trưng khuôn mặt.")

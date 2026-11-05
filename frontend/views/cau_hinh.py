@@ -8,7 +8,7 @@ from datetime import time
 import pandas as pd
 import streamlit as st
 
-from common import section, ApiError, api_put, fmt_time, kpi, kpi_row, note, page_header, safe_get
+from common import section, ApiError, api_put, fmt_time, kpi, kpi_row, page_header, safe_get
 
 page_header("Hệ thống · Quy tắc cảnh báo", "Ngưỡng & giờ hoạt động", "Chỉ quản trị viên được thay đổi. Mọi thay đổi đều được ghi vào nhật ký.")
 
@@ -33,7 +33,7 @@ def _t(s):
 with st.form("cfg"):
     c1, c2, c3 = st.columns(3)
     cap = c1.number_input("Sức chứa tối đa trên cầu (người)", 1, 500, int(cfg["alert_threshold"]),
-                          help="Quy định năm 2019: mỗi lượt không quá 20 người (BRULE-01)")
+                          help="Quy định năm 2019: mỗi lượt không quá 20 người")
     open_t = c2.time_input("Giờ mở cửa", _t(cfg["open_time"]), step=900)
     close_t = c3.time_input("Giờ đóng cửa", _t(cfg["close_time"]), step=900)
     st.caption(f"Với sức chứa {cap}: Vàng từ {min(cap, max(1, round(cap * 0.75)))} người, Đỏ khi trên {cap} người liên tục 15 giây. "
@@ -47,8 +47,6 @@ with st.form("cfg"):
         except ApiError as e:
             st.error(str(e))
 
-note("Ngoài giờ hoạt động hệ thống không gửi tin nhắn cảnh báo Vàng và đoàn khách; "
-     "cảnh báo Đỏ và mất tín hiệu camera vẫn luôn được gửi.")
 
 section("Nhật ký thay đổi")
 log = safe_get("/audit", {"limit": 300}) or []

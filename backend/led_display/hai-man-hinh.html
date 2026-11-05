@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chùa Cầu · Hai đầu cầu</title>
+<link href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@500;600&display=swap" rel="stylesheet">
+<style>
+  /* Xem song song 2 bang LED (dau cau 1 va dau cau 2) tren 1 man hinh — dung khi trinh dien / giam sat. */
+  html, body { margin:0; height:100%; background:#0C0A09; color:#E9D3A3; font-family:'Be Vietnam Pro', system-ui, sans-serif; }
+  .wrap { display:flex; flex-direction:column; justify-content:center; gap:14px; min-height:100%; padding:16px; box-sizing:border-box; }
+  .row { display:flex; gap:16px; justify-content:center; }
+  figure { margin:0; flex:1 1 0; max-width:calc((100vh - 90px) * 16 / 9); }
+  figcaption { font-size:13px; letter-spacing:.22em; margin-bottom:8px; display:flex; justify-content:space-between; }
+  figcaption a { color:#C9A45C; letter-spacing:.05em; text-decoration:none; }
+  iframe { width:100%; aspect-ratio:16/9; border:1px solid rgba(233,211,163,.25); display:block; background:#000; }
+  @media (max-aspect-ratio: 4/3) { .row { flex-direction:column; } figure { max-width:none; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="row" id="row"></div>
+</div>
+<script>
+  const q = new URLSearchParams(location.search);
+  const ends = [[1, "ĐẦU CẦU 1 · LINH THÂN ĐÓN KHÁCH"], [2, "ĐẦU CẦU 2 · LINH KHUYỂN ĐÓN KHÁCH"]];
+  document.getElementById("row").innerHTML = ends.map(([n, label]) => {
+    const p = new URLSearchParams(q); p.set("dau", n);
+    const url = `./?${p}`;
+    return `<figure><figcaption><span>${label}</span><a href="${url}" target="_blank">Mở riêng ↗</a></figcaption>
+            <iframe src="${url}" title="${label}" allow="autoplay"></iframe></figure>`;
+  }).join("");
+</script>
+</body>
+</html>
