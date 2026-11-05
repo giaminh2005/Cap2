@@ -62,7 +62,7 @@ def pdf_of(rep: DailyReport) -> bytes:
 def _deliver(report_id: int, text: str, pdf: bytes, filename: str):
     from .routers.admin import active_recipients
     with SessionLocal() as db:
-        recipients = active_recipients(db)
+        recipients = active_recipients(db, "daily")
         results = notify.deliver(recipients, text)
         results += notify.deliver_document(recipients, filename, pdf, f"📎 Báo cáo ngày {filename[13:23]}")
         rep = db.query(DailyReport).filter(DailyReport.id == report_id).first()
@@ -75,6 +75,17 @@ def _deliver(report_id: int, text: str, pdf: bytes, filename: str):
         else:
             rep.delivery = f"Đã gửi {ok}/{len(results)} tin"
         db.commit()
+    # Tu dong dong bo Google Sheets sau bao cao ngay (bat / tat o trang Google Sheets)
+    from .sheets_auto import auto_sync_after_report
+    res = auto_sync_after_report()
+    if res:
+        print(f"[google_sheets] {res}")
+        with SessionLocal() as db:
+            rep = db.query(DailyReport).filter(DailyReport.id == report_id).first()
+            rep.delivery = f"{rep.delivery} · Google Sheets: {res}"
+            db.commit()
+            notify.deliver(active_recipients(db, "system"),
+                           ("✅" if res.startswith("đã") else "⚠️") + f" <b>Google Sheets</b>: {res}.")
 
 
 def generate(db, day: datetime, send: bool = True, sync_send: bool = False) -> DailyReport:
@@ -132,10 +143,15 @@ def run_due(db, now_local: datetime = None, send: bool = True):
     remind = datetime(2000, 1, 1, close_h, close_m) - timedelta(minutes=30)
     if send and (remind.hour, remind.minute) <= (now_local.hour, now_local.minute) < (close_h, close_m) \
             and _tickets_missing(db, today.strftime("%Y-%m-%d")) and _once(db, "TICKET_REMINDER", today, now_local):
-        notify.deliver_async(_recipients(db), "🎟 <b>NHẮC NHẬP SỐ CUỐNG VÉ</b>\n"
+        notify.deliver_async(_recipients(db, "ticket"), "🎟 <b>NHẮC NHẬP SỐ CUỐNG VÉ</b>\n"
                              f"Còn 30 phút nữa đóng cửa ({cfg.close_time}) mà chưa nhập số cuống vé hôm nay.\n"
                              "Nhập ở trang <b>Đối chiếu vé</b> để báo cáo ngày tính được chênh lệch vé.")
         done.append("ticket-reminder")
+    # Bao cao tuan: sang thu Hai, tu gio mo cua (tuan truoc Thu 2 - CN, so voi tuan truoc nua)
+    if send and now_local.weekday() == 0 and (now_local.hour, now_local.minute) >= (open_h, open_m) \
+            and _once(db, "WEEKLY_REPORT", today, now_local):
+        send_weekly(db, today)
+        done.append("weekly")
     after_close = (now_local.hour, now_local.minute) >= (close_h, close_m)
     if after_close and today.strftime("%Y-%m-%d") not in exists:
         generate(db, today, send=send)
@@ -143,9 +159,9 @@ def run_due(db, now_local: datetime = None, send: bool = True):
     return done
 
 
-def _recipients(db):
+def _recipients(db, topic=None):
     from .routers.admin import active_recipients
-    return active_recipients(db)
+    return active_recipients(db, topic)
 
 
 def _once(db, kind: str, today: datetime, now_local: datetime = None) -> bool:
@@ -165,7 +181,38 @@ def _once(db, kind: str, today: datetime, now_local: datetime = None) -> bool:
 def _send_morning(db):
     from .messages import morning_message
     from .routers.alerts import buttons
-    notify.deliver_async(_recipients(db), morning_message(db), buttons())
+    notify.deliver_async(_recipients(db, "morning"), morning_message(db), buttons())
+
+
+def weekly_summaries(db, ref_day: datetime):
+    """(tuan vua qua, tuan truoc do). Tuan = Thu 2 -> Chu nhat, ket thuc truoc ngay ref_day."""
+    from .routers.reports import report_summary
+    last_sun = ref_day - timedelta(days=ref_day.weekday() + 1)
+    cur = report_summary(period="week", date=last_sun.strftime("%Y-%m-%d"), db=db)
+    prev = report_summary(period="week", date=(last_sun - timedelta(days=7)).strftime("%Y-%m-%d"), db=db)
+    return cur, prev
+
+
+def send_weekly(db, ref_day: datetime = None, sync_send: bool = False) -> dict:
+    """Lap bao cao tuan + PDF, gui cho nguoi nhan chon 'Bao cao tuan'. Tra ve tom tat."""
+    from .messages import weekly_message
+    from .report_export import to_pdf
+    ref_day = ref_day or local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    cur, prev = weekly_summaries(db, ref_day)
+    text, pdf = weekly_message(cur, prev), to_pdf(cur)
+    name = f"bao_cao_tuan_{cur['date_from']}_{cur['date_to']}.pdf"
+    recipients = _recipients(db, "weekly")
+
+    def go():
+        res = notify.deliver(recipients, text)
+        res += notify.deliver_document(recipients, name, pdf, f"📎 Báo cáo tuần {cur['date_from'][8:]}/{cur['date_from'][5:7]}"
+                                                              f" – {cur['date_to'][8:]}/{cur['date_to'][5:7]}")
+        return res
+
+    results = go() if sync_send else (threading.Thread(target=go, daemon=True).start() or [])
+    return {"date_from": cur["date_from"], "date_to": cur["date_to"], "total_entries": cur["total_entries"],
+            "prev_total_entries": prev["total_entries"], "recipients": len(recipients),
+            "sent_ok": sum(1 for r in results if r["status"] == "ok")}
 
 
 def start_scheduler(interval_sec: int = 60):

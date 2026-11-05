@@ -119,6 +119,22 @@ t1, t2 = st.columns(2, gap="large")
 t1.dataframe(tables["Tổng quan"].astype(str), hide_index=True, width="stretch", height=390)
 t2.dataframe(tables["Cơ cấu khách"].astype(str), hide_index=True, width="stretch", height=390)
 
+section("Báo cáo tuần", "tự gửi sáng thứ Hai · tuần trước so với tuần trước nữa")
+w1, w2, _w = st.columns([1, 1, 2])
+try:
+    w1.download_button("Tải PDF tuần vừa qua", data=api_get_bytes("/reports/weekly/pdf"), file_name="bao_cao_tuan.pdf",
+                       mime="application/pdf", icon=":material/download:", width="stretch")
+except ApiError as err:
+    w1.caption(str(err))
+if has_role("admin", "quan_ly") and w2.button("Gửi báo cáo tuần ngay", icon=":material/send:", width="stretch"):
+    try:
+        res = api_post("/reports/weekly/send")
+        st.success(f"Tuần {res['date_from'][8:]}/{res['date_from'][5:7]} – {res['date_to'][8:]}/{res['date_to'][5:7]}: "
+                   f"{fmt_int(res['total_entries'])} lượt (tuần trước {fmt_int(res['prev_total_entries'])}). "
+                   f"Đã gửi {res['sent_ok']} tin cho {res['recipients']} người nhận.")
+    except ApiError as err:
+        st.error(str(err))
+
 section("Báo cáo ngày tự động", "lập và gửi sau giờ đóng cửa")
 daily = safe_get("/reports/daily") or []
 if not daily:

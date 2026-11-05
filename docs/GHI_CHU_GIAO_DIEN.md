@@ -140,3 +140,29 @@ Bot đọc tin nhắn bằng luồng nền của backend; tắt bằng `SMARTCAU
 ## Đối chiếu vé — nhập liệu
 - Chọn **Cả ngày** hoặc **Từng giờ**; khung giờ chỉ hiện khi chọn Từng giờ, liệt kê theo giờ mở cửa và cho biết khung nào đã nhập.
 - **Tải mẫu Excel / CSV**: tệp đã có sẵn ngày đang chọn và các khung giờ, chỉ cần điền cột `ticket_count` rồi tải lên. Dòng để trống bị bỏ qua.
+
+## Chọn loại tin cho từng người nhận
+Trang **Người nhận cảnh báo** → mỗi người có ô chọn loại tin và **mẫu nhanh**:
+
+| Mẫu | Loại tin nhận |
+|---|---|
+| Người trực | Đỏ & sự cố, Vàng, đoàn khách, camera, bản tin đầu ngày, nhắc nhập vé |
+| Quản lý | Đỏ & sự cố, báo cáo ngày, báo cáo tuần |
+| Tất cả | mọi loại (kể cả kết quả đồng bộ Google Sheets) |
+
+Người nhận cũ chưa chọn gì thì vẫn nhận tất cả. Lệnh bot (`/tinhhinh`...) và nút "Đã xử lý" không phụ thuộc loại tin.
+
+## Báo cáo tuần
+- Tự gửi **sáng thứ Hai** (từ giờ mở cửa) cho người chọn "Báo cáo tuần": tuần Thứ Hai – Chủ nhật vừa qua so với tuần trước nữa (tổng lượt, % tăng giảm, trung bình/ngày, ngày đông nhất và vắng nhất, biểu đồ cột 7 ngày, giờ cao điểm, sự cố, KPI, cơ cấu khách), kèm **PDF**.
+- Trang **Báo cáo định kỳ** → mục *Báo cáo tuần*: tải PDF hoặc bấm **Gửi báo cáo tuần ngay**.
+
+## Tự đồng bộ Google Sheets
+- Sau khi lập báo cáo ngày (sau giờ đóng cửa), backend tự đồng bộ sang Google Sheet đã cấu hình. Bật / tắt bằng công tắc ở trang **Google Sheets**.
+- Kết quả ghi vào cột trạng thái của báo cáo ngày và gửi cho người chọn loại tin "Đồng bộ Google Sheets".
+- Backend cần cài `gspread google-auth` và đọc cùng thư mục `config/` với giao diện web (chạy cả hai trên máy chủ). Nếu backend không chạy ở cổng 8000, đặt `SMARTCAU_SELF_URL=http://127.0.0.1:<cổng>`.
+
+## Camera bớt lag
+- Webcam / RTSP được đọc ở luồng riêng và **luôn xử lý khung hình mới nhất** → hình không còn trễ vài giây khi AI chạy chậm.
+- **DeepFace chạy nền**: nhận diện giới tính / tuổi không còn làm đứng hình mỗi lần phân tích.
+- Chữ tiếng Việt vẽ theo từng ô nhỏ thay vì cả khung hình; khung 1080p tự thu về 1280 px (`--max-width`, 0 = giữ nguyên).
+- Thanh dưới cùng hiện thời gian AI mỗi khung (`AI xx ms/khung`). Máy yếu: thêm `--imgsz 480` (nhanh hơn, vẫn đếm tốt khi người ở gần), hoặc `--no-origin` để bỏ ước lượng nguồn khách.

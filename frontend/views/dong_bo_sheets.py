@@ -69,8 +69,9 @@ with st.form("gs"):
                 except ValueError as e:
                     st.error(f"Tệp khóa không hợp lệ: {e}")
                     st.stop()
+            old = json.load(open(CONF_FILE, encoding="utf-8")) if os.path.exists(CONF_FILE) else {}
             with open(CONF_FILE, "w", encoding="utf-8") as f:
-                json.dump({"sheet_id": sid}, f)
+                json.dump({**old, "sheet_id": sid}, f)
             st.success("Đã lưu cấu hình.")
             st.rerun()
 
@@ -79,6 +80,14 @@ if email:
                 unsafe_allow_html=True)
 
 section("Đồng bộ")
+_auto_conf = json.load(open(CONF_FILE, encoding="utf-8")) if os.path.exists(CONF_FILE) else {}
+auto = st.toggle("Tự đồng bộ mỗi tối sau khi lập báo cáo ngày", value=_auto_conf.get("auto", True), key="gs_auto")
+if auto != _auto_conf.get("auto", True):
+    os.makedirs(CONF_DIR, exist_ok=True)
+    _auto_conf["auto"] = auto
+    with open(CONF_FILE, "w", encoding="utf-8") as f:
+        json.dump(_auto_conf, f)
+    st.toast("Đã bật tự đồng bộ." if auto else "Đã tắt tự đồng bộ.", icon=":material/schedule:")
 if not (sheet_id and creds):
     alert_box("Chưa đủ cấu hình: cần cả đường link Google Sheet và tệp khóa.", "info")
     st.stop()

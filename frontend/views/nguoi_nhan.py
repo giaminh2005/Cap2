@@ -70,8 +70,10 @@ else:
     empty("Kết nối bot ở bước 1 trước.")
 
 # --------------------------------------------------------------- 3. danh sach
-section("3 · Danh sách người nhận")
+section("3 · Danh sách người nhận", "mỗi người chọn loại tin muốn nhận")
 rows = safe_get("/recipients") or []
+meta = safe_get("/recipients/topics") or {"topics": {}, "presets": {}}
+TOPICS, PRESETS = meta["topics"], meta["presets"]
 if not rows:
     empty("Chưa có người nhận nào.")
 for r in rows:
@@ -94,6 +96,18 @@ for r in rows:
         if c4.button("Xóa", key=f"d{r['id']}", width="stretch"):
             api_delete(f"/recipients/{r['id']}")
             st.rerun()
+        if TOPICS:
+            p1, p2 = st.columns([1, 3])
+            preset = p1.selectbox("Mẫu", ["Chọn mẫu nhanh…"] + list(PRESETS), key=f"pr{r['id']}", label_visibility="collapsed")
+            default = PRESETS[preset] if preset in PRESETS else r.get("topics") or list(TOPICS)
+            chosen = p2.multiselect("Nhận các loại tin", list(TOPICS), default=default, key=f"tp{r['id']}_{preset}",
+                                    format_func=lambda t: TOPICS[t], label_visibility="collapsed",
+                                    placeholder="Không nhận tin tự động nào")
+            if sorted(chosen) != sorted(r.get("topics") or []):
+                if st.button("Lưu loại tin", key=f"sv{r['id']}", type="primary"):
+                    api_put(f"/recipients/{r['id']}", {"topics": chosen})
+                    st.toast(f"Đã lưu loại tin cho {r['name']}.", icon=":material/check_circle:")
+                    st.rerun()
 
 with st.expander("Thêm người nhận bằng tay"):
     with st.form("add", clear_on_submit=True):

@@ -50,11 +50,37 @@ class Recipient(Base):
     address = Column(String)
     active = Column(Boolean, default=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+    topics = Column(String, nullable=True)     # cac loai tin nhan, cach nhau dau phay; NULL = nhan tat ca
 
 
-def active_recipients(db: Session) -> List[dict]:
+# Loai tin nhan -> moi nguoi nhan chon nhan loai nao (vd quan ly chi nhan Do + bao cao)
+TOPICS = {
+    "red": "🔴 Cảnh báo Đỏ & sự cố",
+    "yellow": "🟡 Cảnh báo Vàng",
+    "group": "👥 Đoàn khách lớn",
+    "camera": "📷 Camera mất / có tín hiệu",
+    "morning": "☀️ Bản tin đầu ngày",
+    "ticket": "🎟 Nhắc nhập số cuống vé",
+    "daily": "📋 Báo cáo ngày",
+    "weekly": "📅 Báo cáo tuần",
+    "system": "⚙️ Đồng bộ Google Sheets",
+}
+PRESETS = {
+    "Người trực": ["red", "yellow", "group", "camera", "morning", "ticket"],
+    "Quản lý": ["red", "daily", "weekly"],
+    "Tất cả": list(TOPICS),
+}
+
+
+def _topics_of(r) -> List[str]:
+    return list(TOPICS) if not r.topics else [t for t in r.topics.split(",") if t in TOPICS]
+
+
+def active_recipients(db: Session, topic: Optional[str] = None) -> List[dict]:
+    """Nguoi nhan dang bat; topic -> chi nhung ai chon nhan loai tin do."""
     return [{"name": r.name, "channel": r.channel, "address": r.address}
-            for r in db.query(Recipient).filter(Recipient.active.is_(True)).all()]
+            for r in db.query(Recipient).filter(Recipient.active.is_(True)).all()
+            if topic is None or topic in _topics_of(r)]
 
 
 # ----------------------------------------------------------------- cau hinh
@@ -125,6 +151,7 @@ class RecipientIn(BaseModel):
     channel: str = "telegram"
     address: str
     active: bool = True
+    topics: Optional[List[str]] = None
 
 
 class RecipientUpdate(BaseModel):
@@ -132,11 +159,26 @@ class RecipientUpdate(BaseModel):
     channel: Optional[str] = None
     address: Optional[str] = None
     active: Optional[bool] = None
+    topics: Optional[List[str]] = None
 
 
 def _rec_json(r: Recipient) -> dict:
     return {"id": r.id, "name": r.name, "channel": r.channel, "channel_label": CHANNELS.get(r.channel, r.channel),
-            "address": r.address, "active": r.active, "created_at": iso(r.created_at)}
+            "address": r.address, "active": r.active, "created_at": iso(r.created_at), "topics": _topics_of(r)}
+
+
+def _topics_str(topics) -> Optional[str]:
+    if topics is None:
+        return None
+    bad = [t for t in topics if t not in TOPICS]
+    if bad:
+        raise HTTPException(status_code=400, detail=f"Loại tin không hợp lệ: {', '.join(bad)}")
+    return None if set(topics) >= set(TOPICS) else ",".join(t for t in TOPICS if t in topics)
+
+
+@router.get("/recipients/topics")
+def recipient_topics():
+    return {"topics": TOPICS, "presets": PRESETS}
 
 
 def _validate_rec(name, channel, address):
@@ -155,7 +197,7 @@ def list_recipients(p: Principal = Depends(require_staff), db: Session = Depends
 def add_recipient(payload: RecipientIn, p: Principal = Depends(require_admin), db: Session = Depends(get_db)):
     _validate_rec(payload.name, payload.channel, payload.address)
     r = Recipient(name=payload.name.strip(), channel=payload.channel, address=payload.address.strip(),
-                  active=payload.active)
+                  active=payload.active, topics=_topics_str(payload.topics))
     db.add(r)
     log_audit(db, p.username, "Thêm người nhận", f"{r.name} ({CHANNELS[r.channel]})")
     db.commit()
@@ -173,6 +215,8 @@ def update_recipient(rid: int, payload: RecipientUpdate, p: Principal = Depends(
         v = getattr(payload, f)
         if v is not None:
             setattr(r, f, v.strip() if isinstance(v, str) else v)
+    if payload.topics is not None:
+        r.topics = _topics_str(payload.topics)
     _validate_rec(r.name, r.channel, r.address)
     log_audit(db, p.username, "Sửa người nhận", f"{r.name} ({'bật' if r.active else 'tắt'})")
     db.commit()

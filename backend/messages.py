@@ -222,3 +222,61 @@ def daily_report_message(r: dict, tickets_missing: bool = False) -> str:
                      "Nhập ở trang Đối chiếu vé.")
     lines.append("\n📎 Báo cáo đầy đủ trong tệp PDF đính kèm.")
     return "\n".join(lines) + f"\n\n{FOOT}"
+
+
+WEEKDAY_VI = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ nhật"]
+
+
+def _change(cur, prev) -> str:
+    if not prev:
+        return "" if not cur else " (tuần trước chưa có số liệu)"
+    pct = round((cur - prev) / prev * 100)
+    return f" ({'📈' if pct > 0 else '📉' if pct < 0 else '➖'} {pct:+d}% so với tuần trước: {prev})"
+
+
+def weekly_message(r: dict, prev: dict) -> str:
+    """Bao cao tuan: tong luot, so voi tuan truoc, ngay dong nhat / vang nhat, gio cao diem, su co, KPI."""
+    from datetime import datetime as _dt
+    k, pk = r["kpis"], prev["kpis"]
+
+    def d(s):
+        return f"{s[8:]}/{s[5:7]}"
+
+    def pct(v):
+        return "–" if v is None else f"{v:.0f}%"
+
+    days = [x for x in r["by_day"]]
+    busiest = max(days, key=lambda x: x["entries"]) if days else None
+    quiet = min(days, key=lambda x: x["entries"]) if days else None
+    wd = (lambda s: WEEKDAY_VI[_dt.strptime(s, "%Y-%m-%d").weekday()])
+    avg = round(r["total_entries"] / max(1, len(days)))
+    lines = [f"📅 <b>BÁO CÁO TUẦN {d(r['date_from'])} – {d(r['date_to'])}/{r['date_to'][:4]}</b>", "",
+             f"🎫 Tổng lượt vào cầu: <b>{r['total_entries']}</b>{_change(r['total_entries'], prev['total_entries'])}",
+             f"📊 Trung bình <b>{avg}</b> lượt/ngày"]
+    if busiest and busiest["entries"]:
+        lines.append(f"🏆 Đông nhất: <b>{wd(busiest['date'])} {d(busiest['date'])}</b> · {busiest['entries']} lượt")
+        lines.append(f"🌙 Vắng nhất: {wd(quiet['date'])} {d(quiet['date'])} · {quiet['entries']} lượt")
+        short = ["T2", "T3", "T4", "T5", "T6", "T7", "CN"]
+        bars = "\n".join(f"<code>{short[_dt.strptime(x['date'], '%Y-%m-%d').weekday()]} {d(x['date'])} "
+                         f"{'▇' * max(0, round(x['entries'] / max(1, busiest['entries']) * 12)):<12} {x['entries']}</code>"
+                         for x in days)
+        lines.append(bars)
+    if r["peak_hour"] is not None:
+        lines.append(f"⏰ Giờ cao điểm cả tuần: <b>{r['peak_hour']}h</b>"
+                     + (f" · đông nhất cùng lúc <b>{r['peak_count']}</b> người" if r["peak_count"] else ""))
+    lines += [
+        f"🚨 Sự cố quá tải: <b>{r['incidents']}</b>{_change(r['incidents'], prev['incidents']) if prev['incidents'] or r['incidents'] else ''}",
+        f"⏱ Phút vượt sức chứa: <b>{k['o1_minutes_over']}</b> (tuần trước {pk['o1_minutes_over']})",
+        f"✅ Xử lý trong 3 phút: {pct(k['o4_handled_within_3min_pct'])} · báo sai: {pct(k['o5_false_alarm_pct'])}",
+        f"🟡 Cảnh báo Vàng: {r['alerts']['WARNING']} · 👥 đoàn khách lớn: {r['alerts']['GROUP_DETECTED']}"
+        f" · 📷 mất tín hiệu: {r['alerts']['CAMERA_LOST']}",
+    ]
+    dem = r.get("demographics") or {}
+    if dem.get("identified"):
+        g, o, n = dem.get("gender", {}), dem.get("origin", {}), dem["identified"]
+        lines.append(f"🧑‍🤝‍🧑 Nam {round(g.get('Man', 0) / n * 100)}% · Nữ {round(g.get('Woman', 0) / n * 100)}% · "
+                     f"quốc tế {round(o.get('Nuoc ngoai', 0) / n * 100)}%")
+    if k["o8_gap_rate_pct"] is not None:
+        lines.append(f"🎟 Chênh lệch vé: <b>{k['o8_gap_rate_pct']}%</b>")
+    lines.append("\n📎 Báo cáo đầy đủ trong tệp PDF đính kèm.")
+    return "\n".join(lines) + f"\n\n{FOOT}"

@@ -49,6 +49,8 @@ EVENT_LABELS = {
     "MORNING_BRIEF": "Bản tin đầu ngày",
     "TICKET_REMINDER": "Nhắc nhập số cuống vé",
 }
+TOPIC_OF = {"WARNING": "yellow", "CRITICAL_ALERT": "red", "CRITICAL_CLEARED": "red", "GROUP_DETECTED": "group",
+            "CAMERA_LOST": "camera", "CAMERA_RESTORED": "camera"}   # loai tin -> nguoi nhan chon nhan
 ALWAYS_NOTIFY = {"CRITICAL_ALERT", "CAMERA_LOST"}          # gui ca ngoai gio mo cua
 NOTIFY_IN_HOURS = {"WARNING", "GROUP_DETECTED", "CAMERA_RESTORED"}
 
@@ -150,7 +152,8 @@ def create_system_event(event: SystemEventIn, db: Session = Depends(get_db)):
     if event.event_type == "CRITICAL_CLEARED" and incident_id is not None:
         send = True
     if send:
-        notify.deliver_async(active_recipients(db), text, buttons(inc if event.event_type == "CRITICAL_ALERT" else None))
+        notify.deliver_async(active_recipients(db, TOPIC_OF.get(event.event_type)), text,
+                             buttons(inc if event.event_type == "CRITICAL_ALERT" else None))
     return {"saved": True, "id": row.id, "incident_id": incident_id, "notified": send}
 
 
@@ -201,7 +204,7 @@ def acknowledge(db, inc: Incident, who: str, note: str = "", via: str = "web") -
     db.commit()
     if first and inc.closed_at is None:
         secs = _secs(inc.opened_at, inc.acked_at)
-        notify.deliver_async(active_recipients(db),
+        notify.deliver_async(active_recipients(db, "red"),
                              f"🙋 <b>{escape(who)}</b> đã nhận xử lý <b>sự cố #{inc.id}</b> "
                              f"sau {secs // 60} phút {secs % 60} giây"
                              f"{' (qua Telegram)' if via == 'telegram' else ''}.\n"
@@ -217,7 +220,7 @@ def close_incident(incident_id: int, p: Principal = Depends(require_staff), db: 
     if inc.closed_at is None:
         text = _close(db, inc, "manual", p.display)
         db.commit()
-        notify.deliver_async(active_recipients(db), text, buttons())
+        notify.deliver_async(active_recipients(db, "red"), text, buttons())
     db.refresh(inc)
     return _incident_json(inc)
 
