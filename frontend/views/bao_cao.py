@@ -5,46 +5,95 @@ Bao cao ngay / tuan / thang tu du lieu that, chi so KPI, bieu do nhiet gio x thu
 xuat Excel + PDF, danh sach bao cao ngay TU DONG lap sau gio dong cua.
 """
 
-from datetime import timedelta
+from datetime import date, timedelta
 
 import pandas as pd
 import streamlit as st
 
-from backend.report_export import report_tables, to_excel, to_pdf
-from common import (C, HAS_PLOTLY, ApiError, insight_list, api_get_bytes, api_post, empty, fmt_duration, fmt_int, fmt_pct,
-                    fmt_time, has_role, kpi, kpi_row, local_today, page_header, safe_get, section, style_fig)
+from backend.report_export import (ORG_NAME, ORG_PARENT, PDF_DEFAULTS, SECTIONS, period_label, report_tables, to_excel,
+                                   to_pdf)
+from common import (C, HAS_PLOTLY, ApiError, current_user, insight_list, api_get_bytes, api_post, empty, fmt_duration,
+                    fmt_int, fmt_pct, fmt_time, has_role, kpi, kpi_row, local_today, page_header, safe_get, section,
+                    style_fig)
 
 if HAS_PLOTLY:
     import plotly.graph_objects as go
 
 page_header("Phân tích · Báo cáo", "Báo cáo định kỳ",
-            "Lượng khách, chỉ số an toàn và cơ cấu khách theo ngày, tuần, tháng. Báo cáo ngày được hệ thống "
-            "tự lập và gửi sau giờ đóng cửa.")
+            "Lượng khách, chỉ số an toàn và cơ cấu khách theo ngày, tuần, tháng, năm hoặc khoảng thời gian tùy chọn. "
+            "Xuất PDF theo thể thức văn bản hành chính, có biểu đồ minh họa.")
 
-PERIODS = {"Ngày": "day", "Tuần · 7 ngày": "week", "Tháng · 30 ngày": "month"}
-c1, c2, c3 = st.columns([1.4, 1, 1.6])
-period_vi = c1.segmented_control("Kỳ báo cáo", list(PERIODS), default="Ngày", selection_mode="single") or "Ngày"
-day = c2.date_input("Ngày cuối kỳ", value=local_today(), format="DD/MM/YYYY")
+PERIODS = {"Ngày": "day", "Tuần": "week", "Tháng": "month", "Năm": "year", "Tùy chọn": "custom"}
+today = local_today()
+c1, c2 = st.columns([1.6, 2])
+period_vi = c1.segmented_control("Kỳ báo cáo", list(PERIODS), default="Tháng", selection_mode="single") or "Tháng"
 period = PERIODS[period_vi]
+params = {"period": period}
+with c2:
+    if period == "day":
+        params["date"] = st.date_input("Ngày", value=today, max_value=today, format="DD/MM/YYYY").isoformat()
+    elif period == "week":
+        params["date"] = st.date_input("Ngày cuối tuần (7 ngày tính đến ngày này)", value=today, max_value=today,
+                                       format="DD/MM/YYYY").isoformat()
+    elif period == "month":
+        m1, m2 = st.columns(2)
+        month = m1.selectbox("Tháng", list(range(1, 13)), index=today.month - 1, format_func=lambda m: f"Tháng {m:02d}")
+        year = m2.selectbox("Năm", list(range(today.year, today.year - 6, -1)))
+        params["date"] = f"{year}-{month:02d}-01"
+    elif period == "year":
+        year = st.selectbox("Năm", list(range(today.year, today.year - 6, -1)))
+        params["date"] = f"{year}-01-01"
+    else:
+        rng = st.date_input("Từ ngày – đến ngày", value=(today - timedelta(days=29), today), max_value=today,
+                            format="DD/MM/YYYY")
+        if not isinstance(rng, (tuple, list)) or len(rng) != 2:
+            st.info("Chọn ngày bắt đầu và ngày kết thúc.")
+            st.stop()
+        params.update(date_from=rng[0].isoformat(), date_to=rng[1].isoformat())
+day = date.fromisoformat(params.get("date") or params.get("date_to"))
 
-r = safe_get("/reports/summary", {"period": period, "date": day.isoformat()})
+r = safe_get("/reports/summary", params)
 if r is None:
     st.stop()
-with c3:
-    st.markdown('<div style="height:28px"></div>', unsafe_allow_html=True)
-    b1, b2 = st.columns(2)
-    b1.download_button("Xuất Excel", data=to_excel(r), type="primary", width="stretch",
-                       file_name=f"bao_cao_{period}_{r['date_to']}.xlsx",
+
+# ---------------------------------------------------------------- xuat bao cao
+with st.container(border=True):
+    st.markdown(f'<div class="sc-eyebrow">Xuất báo cáo · {period_label(r)}</div>', unsafe_allow_html=True)
+    with st.expander("Tùy chỉnh nội dung báo cáo PDF", expanded=False):
+        sec = st.multiselect("Các mục đưa vào báo cáo", list(SECTIONS), default=list(SECTIONS),
+                             format_func=lambda k: SECTIONS[k])
+        charts = st.toggle("Kèm biểu đồ minh họa", value=True)
+        o1, o2, o3 = st.columns(3)
+        report_no = o1.text_input("Số báo cáo", placeholder="vd 15")
+        prepared_by = o2.text_input("Người lập báo cáo", value=(current_user() or {}).get("full_name", ""))
+        approver = o3.text_input("Thủ trưởng đơn vị (ký)", placeholder="Họ và tên")
+        o4, o5 = st.columns(2)
+        org_parent = o4.text_input("Cơ quan chủ quản", value=ORG_PARENT.replace("\n", " "))
+        org_name = o5.text_input("Đơn vị lập báo cáo", value=ORG_NAME.replace("\n", " "))
+        recipients = st.text_area("Nơi nhận", value=PDF_DEFAULTS["recipients"], height=90)
+        notes = st.text_area("Kiến nghị, đề xuất thêm (mỗi dòng một ý)", height=90)
+    opts = {"sections": sec, "charts": charts, "report_no": report_no, "prepared_by": prepared_by,
+            "approver": approver, "recipients": recipients, "notes": notes,
+            "org_parent": org_parent, "org_name": org_name}
+    name = f"bao_cao_{period}_{r['date_from']}_{r['date_to']}"
+    b1, b2, b3 = st.columns([1, 1, 2])
+    if b1.button("Lập báo cáo PDF", type="primary", icon=":material/picture_as_pdf:", width="stretch"):
+        with st.spinner("Đang lập báo cáo và vẽ biểu đồ..."):
+            try:
+                st.session_state["pdf_bytes"] = (name, to_pdf(r, opts))
+            except ImportError as e:
+                st.error(f"Thiếu thư viện: {e}. Chạy: pip install fpdf2 matplotlib")
+    b2.download_button("Xuất Excel", data=to_excel(r), width="stretch", icon=":material/table_view:",
+                       file_name=f"{name}.xlsx",
                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-    try:
-        b2.download_button("Xuất PDF", data=to_pdf(r), width="stretch",
-                           file_name=f"bao_cao_{period}_{r['date_to']}.pdf", mime="application/pdf")
-    except ImportError:
-        b2.caption("Cần cài fpdf2 để xuất PDF.")
+    got = st.session_state.get("pdf_bytes")
+    if got and got[0] == name:
+        b3.download_button("Tải PDF vừa lập", data=got[1], file_name=f"{name}.pdf", mime="application/pdf",
+                           icon=":material/download:", width="stretch")
 
 kpi_row([
     kpi("Lượt vào cầu", fmt_int(r["total_entries"]),
-        f"{r['date_from'][8:]}/{r['date_from'][5:7]} – {r['date_to'][8:]}/{r['date_to'][5:7]}/{r['date_to'][:4]}", "primary"),
+        (f"kỳ trước {fmt_int(r['previous']['total_entries'])}" if r.get("previous") else period_label(r)), "primary"),
     kpi("Lượt qua mặt tiền", fmt_int(r["facade_passes"]), "không lên cầu", "info"),
     kpi("Đông nhất cùng lúc", f"{fmt_int(r['peak_count'])}<small> người</small>",
         f"giờ nhiều khách nhất {r['peak_hour']}h" if r["peak_hour"] is not None else "", "warn"),
@@ -77,6 +126,10 @@ if HAS_PLOTLY:
             section("Lượt vào theo khung 15 phút")
             df = pd.DataFrame(r["by_15min"])
             x, y = (df["slot"], df["entries"]) if not df.empty else ([], [])
+        elif period == "year" or len(r["by_day"]) > 62:
+            section("Lượt vào theo tháng")
+            df = pd.DataFrame(r["by_month"])
+            x, y = df["month"].map(lambda m: f"T{m[5:7]}/{m[:4]}"), df["entries"]
         else:
             section("Lượt vào theo ngày")
             df = pd.DataFrame(r["by_day"])
