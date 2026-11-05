@@ -1,90 +1,62 @@
 """
-frontend/views/lich_su.py
--------------------------
-Phu trach: KHANH      Chuc nang: F3.2 / F5.1 Tra cuu ho so luot khach (FR-09, FR-10)
+frontend/views/lich_su.py  —  MODULE M6 · F3.2 / F5.1 Tra cuu luot khach (FR-09, FR-10)
+Phu trach: KHANH.
 """
-# Ghi chu: Trang da chay - chi can kiem tra lai khi UAT.
 
-import os
-from datetime import datetime
+from datetime import timedelta
 
 import pandas as pd
 import streamlit as st
 
-from common import (ADMIN_API_KEY, AGE_ORDER, API_BASE, GENDER_LABEL_VI, GENDER_VALUE_FROM_VI,
-                    STATUS_META, _HAS_PLOTLY, api_get, api_put, page_header, render_metric,
-                    render_status_metric)
+from common import (AGE_ORDER, GENDER_VI, ORIGIN_VI, fmt_int, fmt_time, kpi, kpi_row, local_today,
+                    page_header, safe_get)
 
-if _HAS_PLOTLY:
-    import plotly.express as px
+page_header("Phân tích · Hồ sơ lượt khách", "Lịch sử lượt khách", "Tra cứu, lọc và xuất nhãn nhận diện của từng lượt khách vào cầu.")
 
+today = local_today()
+with st.container(border=True):
+    c1, c2, c3, c4, c5 = st.columns([2, 1, 1, 1.2, 1])
+    picked = c1.date_input("Khoảng thời gian", value=(today - timedelta(days=6), today), format="DD/MM/YYYY")
+    gender = c2.selectbox("Giới tính", ["Tất cả", "Nữ", "Nam", "Không xác định"])
+    age = c3.selectbox("Nhóm tuổi", ["Tất cả"] + AGE_ORDER)
+    origin = c4.selectbox("Nguồn khách", ["Tất cả", "Trong nước", "Nước ngoài"])
+    limit = c5.number_input("Số dòng tối đa", 50, 20000, 1000, step=50)
 
-def page_lich_su():
-    page_header(
-        "\U0001F3EE", "Dau chan du khach", "Lich su luot khach",
-        "Tra cuu, loc va xuat du lieu nhan khau hoc da ghi nhan qua camera AI.",
-    )
+if not isinstance(picked, (tuple, list)) or len(picked) != 2:
+    st.info("Chọn ngày bắt đầu và ngày kết thúc.")
+    st.stop()
 
-    with st.container(border=True):
-        col_a, col_b, col_c = st.columns(3)
-        limit = col_a.number_input("So dong toi da", min_value=10, max_value=5000, value=200, step=10)
-        gender_filter_vi = col_b.selectbox("Loc theo gioi tinh", ["(Tat ca)", "Nam", "Nu"])
-        age_filter = col_c.text_input("Loc theo khoang tuoi (vd 25-34, de trong = tat ca)")
+params = {"date_from": picked[0].isoformat(), "date_to": picked[1].isoformat(), "limit": int(limit)}
+if gender != "Tất cả":
+    params["gender"] = {"Nữ": "Woman", "Nam": "Man", "Không xác định": "unknown"}[gender]
+if age != "Tất cả":
+    params["age_range"] = age
+if origin != "Tất cả":
+    params["origin"] = {"Trong nước": "Trong nuoc", "Nước ngoài": "Nuoc ngoai"}[origin]
 
-        params = {"limit": int(limit)}
-        if gender_filter_vi != "(Tat ca)":
-            params["gender"] = GENDER_VALUE_FROM_VI.get(gender_filter_vi, gender_filter_vi)
-        if age_filter.strip():
-            params["age_range"] = age_filter.strip()
+rows = safe_get("/visit_events", params)
+if rows is None:
+    st.stop()
+if not rows:
+    st.info("Không có lượt khách nào khớp bộ lọc.")
+    st.stop()
 
-    data, err = api_get("/visit_events", params=params)
-    if err:
-        st.error(err)
-        return
+df = pd.DataFrame([{
+    "Thời gian": fmt_time(r["timestamp"]),
+    "Camera": f"Chân cầu {r['camera_id']}" if r["camera_id"] else "–",
+    "Giới tính": GENDER_VI.get(r["gender"], r["gender"]),
+    "Nhóm tuổi": "Không xác định" if r["age_range"] in (None, "Khong xac dinh", "Khong ro") else r["age_range"],
+    "Tuổi ước tính": str(r["age"]) if r["age"] is not None else "–",
+    "Nguồn khách": ORIGIN_VI.get(r["origin"], "Chưa rõ"),
+    "Mã theo dõi": str(r["track_id"]) if r["track_id"] is not None else "–",
+} for r in rows])
 
-    if not data:
-        st.info("Chua co luot khach nao duoc ghi nhan (hoac khong co ket qua khop bo loc).")
-        return
-
-    df = pd.DataFrame(data)
-    df_display = df.copy()
-    if "gender" in df_display.columns:
-        df_display["gender"] = df_display["gender"].map(lambda g: GENDER_LABEL_VI.get(g, g))
-    if "timestamp" in df_display.columns:
-        try:
-            df_display["timestamp"] = pd.to_datetime(df_display["timestamp"]).dt.strftime("%d/%m/%Y %H:%M:%S")
-        except Exception:
-            pass  # neu dinh dang thoi gian la gi khac thuong, giu nguyen chuoi goc thay vi lam vo trang
-    df_display = df_display.rename(columns={
-        "id": "ID", "track_id": "Ma theo doi", "timestamp": "Thoi gian",
-        "age": "Tuoi (uoc tinh)", "age_range": "Khoang tuoi", "gender": "Gioi tinh",
-    })
-
-    filter_label = "Khong co"
-    if gender_filter_vi != "(Tat ca)" or age_filter.strip():
-        filter_label = gender_filter_vi if gender_filter_vi != "(Tat ca)" else ""
-        if age_filter.strip():
-            filter_label = f"{filter_label}, {age_filter.strip()}" if filter_label else age_filter.strip()
-
-    st.markdown(
-        f"""
-        <div class="hoian-kpi-row" style="grid-template-columns: repeat(2, 1fr); margin-bottom:16px;">
-            {render_metric("\U0001F4CA So dong dang hien thi", f"{len(df):,}".replace(",", "."))}
-            {render_metric("\U0001F50D Bo loc dang ap dung", filter_label)}
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-    st.dataframe(df_display, use_container_width=True, hide_index=True, height=440)
-
-    csv_bytes = df_display.to_csv(index=False).encode("utf-8-sig")  # utf-8-sig de Excel mo tieng Viet khong bi loi font
-    st.download_button(
-        "⬇️ Xuat CSV",
-        data=csv_bytes,
-        file_name=f"luot_khach_chua_cau_{datetime.now().strftime('%Y%m%d_%H%M%S')}.csv",
-        mime="text/csv",
-    )
-
-
-page_lich_su()
+kpi_row([
+    kpi("Số lượt hiển thị", fmt_int(len(df)), "theo bộ lọc", "primary"),
+    kpi("Nữ", fmt_int((df["Giới tính"] == "Nữ").sum()), "", "info"),
+    kpi("Nam", fmt_int((df["Giới tính"] == "Nam").sum()), "", "info"),
+    kpi("Nước ngoài", fmt_int((df["Nguồn khách"] == "Nước ngoài").sum()), "ước lượng", "warn"),
+])
+st.dataframe(df, width="stretch", hide_index=True, height=480)
+st.download_button("Xuất CSV", data=df.to_csv(index=False).encode("utf-8-sig"),
+                   file_name=f"luot_khach_{picked[0]}_{picked[1]}.csv", mime="text/csv")

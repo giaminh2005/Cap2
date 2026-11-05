@@ -1,98 +1,125 @@
 """
 backend/routers/demographics.py  —  MODULE M1 · F3 Phan tich khach tham quan
 =============================================================================
-Phu trach: MINH.   Chuc nang BFD: F3.2, F3.3   (FR-09)
-Backlog: PB-07
+Phu trach: MINH.   Chuc nang BFD: F3.2, F3.3   (FR-09, BRULE-05, BRULE-06)
 
-Cac endpoint DA CHAY (chuyen nguyen tu api_server.py cu):
-    POST /visit_events     luu ho so nhan khau hoc (che do 1 camera)
-    GET  /visit_events     danh sach ho so, loc theo gender / age_range
-    POST /region_stats     +1 bo dem tong hop (ngay, gio, khu vuc)
-    GET  /stats/region     doc bo dem khu vuc
+    POST /visit_events             camera luu nhan cua 1 luot khach vao (gioi tinh, khoang tuoi, trong/ngoai nuoc)
+    GET  /visit_events             tra cuu, loc theo ngay / gioi tinh / tuoi / nguon khach
+    GET  /stats/demographics       co cau khach theo gio, khoang tuoi, trong nuoc / nuoc ngoai
+    POST /region_stats, GET /stats/region   (cu) bo dem khu vuc tong hop
 
-Endpoint SKELETON ("mock": true) - Minh lam that, Hoan dung cho trang
-"Co cau khach" ngay tu bay gio ma khong phai cho:
-    GET  /stats/demographics?date=YYYY-MM-DD
+BRULE-06: luot co gender = None (do tin cay < 70%) duoc dem rieng la
+"Khong xac dinh" va KHONG dua vao ty le.
 """
 
 from datetime import datetime
 from typing import Optional
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import RegionStat, VisitEvent
 from ..schemas import RegionStatIn, VisitEventIn
 from ..security import require_api_key
+from ..timeutil import iso, local_day_range_utc, local_now, parse_day, to_local
 
 router = APIRouter(tags=["F3 - Phan tich khach tham quan"])
+
+AGE_ORDER = ["0-5", "6-12", "13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65-69", "70+"]
+ORIGINS = ("Trong nuoc", "Nuoc ngoai")
+
+
+def _range(date_from: str, date_to: str):
+    try:
+        d1 = parse_day(date_from) if date_from else local_now()
+        d2 = parse_day(date_to) if date_to else d1
+    except ValueError:
+        raise HTTPException(status_code=400, detail="Ngày phải có dạng YYYY-MM-DD.")
+    if d2 < d1:
+        raise HTTPException(status_code=400, detail="Ngày kết thúc phải sau ngày bắt đầu.")
+    return d1, d2
 
 
 @router.post("/visit_events", dependencies=[Depends(require_api_key)])
 def create_visit_event(event: VisitEventIn, db: Session = Depends(get_db)):
-    row = VisitEvent(track_id=event.track_id, age=event.age,
-                     age_range=event.age_range, gender=event.gender)
+    origin = event.origin if event.origin in ORIGINS else None
+    row = VisitEvent(track_id=event.track_id, age=event.age, age_range=event.age_range,
+                     gender=event.gender, origin=origin, camera_id=event.camera_id)
     db.add(row)
     db.commit()
-    db.refresh(row)
     return {"saved": True, "id": row.id}
 
 
 @router.get("/visit_events")
-def list_visit_events(limit: int = 50, gender: Optional[str] = None,
-                      age_range: Optional[str] = None, db: Session = Depends(get_db)):
-    query = db.query(VisitEvent)
-    if gender:
-        query = query.filter(VisitEvent.gender == gender)
+def list_visit_events(limit: int = 200, gender: Optional[str] = None, age_range: Optional[str] = None,
+                      origin: Optional[str] = None, date_from: str = "", date_to: str = "",
+                      db: Session = Depends(get_db)):
+    q = db.query(VisitEvent)
+    if date_from or date_to:
+        d1, d2 = _range(date_from, date_to)
+        start, end = local_day_range_utc(d1, d2)
+        q = q.filter(VisitEvent.timestamp >= start, VisitEvent.timestamp < end)
+    if gender == "unknown":
+        q = q.filter(VisitEvent.gender.is_(None))
+    elif gender:
+        q = q.filter(VisitEvent.gender == gender)
     if age_range:
-        query = query.filter(VisitEvent.age_range == age_range)
-    rows = query.order_by(VisitEvent.id.desc()).limit(limit).all()
-    return [
-        {"id": r.id, "track_id": r.track_id, "timestamp": r.timestamp.isoformat(),
-         "age": r.age, "age_range": r.age_range, "gender": r.gender}
-        for r in rows
-    ]
+        q = q.filter(VisitEvent.age_range == age_range)
+    if origin:
+        q = q.filter(VisitEvent.origin == origin)
+    rows = q.order_by(VisitEvent.id.desc()).limit(limit).all()
+    return [{"id": r.id, "track_id": r.track_id, "timestamp": iso(r.timestamp), "age": r.age,
+             "age_range": r.age_range, "gender": r.gender, "origin": r.origin, "camera_id": r.camera_id}
+            for r in rows]
+
+
+def summarize_visits(rows):
+    """Dung chung cho /stats/demographics va /reports/summary."""
+    gender, age, origin = {"Man": 0, "Woman": 0}, {a: 0 for a in AGE_ORDER}, {o: 0 for o in ORIGINS}
+    unknown = 0
+    by_hour = {}
+    for r in rows:
+        h = to_local(r.timestamp).hour
+        b = by_hour.setdefault(h, {"hour": h, "Man": 0, "Woman": 0, "unknown": 0})
+        if r.gender not in ("Man", "Woman"):
+            unknown += 1
+            b["unknown"] += 1
+            continue
+        gender[r.gender] += 1
+        b[r.gender] += 1
+        if r.age_range in age:
+            age[r.age_range] += 1
+        if r.origin in origin:
+            origin[r.origin] += 1
+    return {"total": len(rows), "identified": len(rows) - unknown, "unknown": unknown,
+            "gender": gender, "age_range": age, "origin": origin,
+            "by_hour": [by_hour[h] for h in sorted(by_hour)]}
+
+
+@router.get("/stats/demographics")
+def demographics_summary(date_from: str = "", date_to: str = "", date: str = "", db: Session = Depends(get_db)):
+    d1, d2 = _range(date_from or date, date_to or date)
+    start, end = local_day_range_utc(d1, d2)
+    rows = db.query(VisitEvent).filter(VisitEvent.timestamp >= start, VisitEvent.timestamp < end).all()
+    return {"date_from": d1.strftime("%Y-%m-%d"), "date_to": d2.strftime("%Y-%m-%d"), **summarize_visits(rows)}
 
 
 @router.post("/region_stats", dependencies=[Depends(require_api_key)])
 def bump_region_stat(stat: RegionStatIn, db: Session = Depends(get_db)):
-    now = datetime.utcnow()
+    now = local_now()
     date_str = now.strftime("%Y-%m-%d")
-    row = (db.query(RegionStat)
-           .filter(RegionStat.date == date_str, RegionStat.hour == now.hour,
-                   RegionStat.region == stat.region)
-           .first())
+    row = (db.query(RegionStat).filter(RegionStat.date == date_str, RegionStat.hour == now.hour,
+                                       RegionStat.region == stat.region).first())
     if row is None:
         row = RegionStat(date=date_str, hour=now.hour, region=stat.region, count=0)
         db.add(row)
     row.count += 1
     db.commit()
-    db.refresh(row)
     return {"saved": True, "date": row.date, "hour": row.hour, "region": row.region, "count": row.count}
 
 
 @router.get("/stats/region")
 def region_stats(db: Session = Depends(get_db)):
-    rows = db.query(RegionStat).all()
-    return [{"date": r.date, "hour": r.hour, "region": r.region, "count": r.count} for r in rows]
-
-
-# ------------------------------------------------------------- SKELETON F3.3
-# TODO(Minh, Sprint 4 - PB-07): thay du lieu mau bang truy van that tu
-# visit_events (GROUP BY gio, gioi tinh, khoang tuoi) + region_stats.
-# GIU NGUYEN cau truc JSON duoi day de trang "Co cau khach" khong phai sua.
-@router.get("/stats/demographics")
-def demographics_summary(date: str = ""):
-    date = date or datetime.now().strftime("%Y-%m-%d")
-    hours = list(range(8, 22))
-    men = [5, 8, 12, 15, 11, 9, 14, 18, 22, 25, 30, 28, 20, 12]
-    women = [6, 9, 14, 17, 13, 10, 16, 21, 26, 29, 35, 31, 22, 13]
-    return {
-        "mock": True,
-        "date": date,
-        "by_hour": [{"hour": h, "Man": m, "Woman": w} for h, m, w in zip(hours, men, women)],
-        "age_range": {"0-12": 18, "13-17": 22, "18-24": 96, "25-34": 120,
-                      "35-44": 71, "45-54": 40, "55-64": 25, "65+": 12},
-        "domestic_vs_foreign": {"Trong nuoc": 230, "Nuoc ngoai": 174},
-    }
+    return [{"date": r.date, "hour": r.hour, "region": r.region, "count": r.count}
+            for r in db.query(RegionStat).all()]

@@ -1,8 +1,8 @@
 """
 backend/schemas.py  (MODULE M2 - Nen tang backend, phu trach: Minh)
 ---------------------------------------------------------------------
-Khuon du lieu (Pydantic) cho cac API DA CO. Schema cua API MOI dat ngay
-trong file router cua module do (cung ly do nhu models.py).
+Khuon du lieu (Pydantic) cho cac API dung chung. Schema rieng cua 1 module
+dat ngay trong file router cua module do.
 """
 
 from typing import Optional
@@ -15,6 +15,8 @@ class VisitEventIn(BaseModel):
     age: Optional[int] = None
     age_range: Optional[str] = None
     gender: Optional[str] = None
+    origin: Optional[str] = None          # "Trong nuoc" | "Nuoc ngoai" | None
+    camera_id: Optional[int] = None
 
 
 class OccupancyIn(BaseModel):
@@ -26,11 +28,8 @@ class SystemEventIn(BaseModel):
     event_type: str
     count: Optional[int] = None
     message: Optional[str] = None
+    camera_id: Optional[int] = None
 
 
 class RegionStatIn(BaseModel):
     region: str
-
-
-class ConfigIn(BaseModel):
-    alert_threshold: int

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="260" height="56" viewBox="0 0 260 56">
+  <g fill="none" stroke="#C9A45C" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M4 44 H48"/><path d="M8 44 Q26 30 44 44"/>
+    <path d="M7 32 L26 16 L45 32"/><path d="M19 20 L26 12 L33 20"/>
+    <path d="M14 39 V30 M26 37 V26 M38 39 V30"/>
+  </g>
+  <text x="60" y="27" font-family="Cormorant Garamond, Georgia, serif" font-size="24" font-weight="600" fill="#F3EBDD" letter-spacing="0.5">SmartCau</text>
+  <text x="61" y="44" font-family="Be Vietnam Pro, Arial, sans-serif" font-size="9.5" fill="#C9A45C" letter-spacing="2.6">CHÙA CẦU · HỘI AN</text>
+</svg>

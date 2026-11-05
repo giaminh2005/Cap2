@@ -1,40 +1,40 @@
-# Hợp đồng API (API Contract) — SmartCau AI
+# Hợp đồng API — SmartCau AI (bản 1.0, toàn bộ là dữ liệu thật)
 
-**Chốt ngày 09/11/2026 (đầu Sprint 3).** Đây là "thỏa thuận" giữa người làm giao diện và người làm backend: frontend chỉ đọc đúng các khóa JSON ghi ở đây, backend chỉ được thêm khóa mới chứ không đổi/xóa khóa cũ. Nhờ vậy giao diện làm trên dữ liệu mẫu ngay từ ngày đầu, không phải chờ backend xong.
+Frontend chỉ đọc đúng các khóa JSON ghi ở đây; backend được thêm khóa mới, không đổi/xóa khóa cũ. Muốn đổi: mở GitHub Issue nhãn `api-change`.
 
-Muốn đổi hợp đồng: mở GitHub Issue gắn nhãn `api-change`, cả 3 người đồng ý rồi mới sửa file này.
+**Xác thực:** camera ghi dữ liệu bằng header `X-API-Key` (khi máy chủ đặt `SMARTCAU_API_KEY`). Người dùng web gửi `Authorization: Bearer <token>` lấy từ `/auth/login`. Cột "Quyền": — = công khai, 📷 = camera, 👤 = đã đăng nhập, 🧑‍💼 = admin/quản lý, 🔑 = admin.
 
-Trạng thái: **Chạy** = đã có dữ liệu thật · **Mock** = trả dữ liệu mẫu, có khóa `"mock": true`.
+| Module | Phương thức + đường dẫn | Quyền | Ghi chú |
+|---|---|---|---|
+| M2 | `POST /auth/login` `{username, password}` → `{token, username, full_name, role, must_change_password}` | — | |
+| M2 | `POST /auth/logout`, `GET /auth/me`, `POST /auth/change_password` | 👤 | |
+| M2 | `GET/POST /users`, `PUT /users/{id}` `{full_name?, role?, active?, password?}` | 🔑 | FR-12 |
+| M2 | `GET /audit` | 🧑‍💼 | nhật ký thay đổi |
+| M1 | `POST /bridge/crossing` `{camera_id, direction: in\|out, track_id}` → `{num1, num2, onbridge, dem, date, reset}` | 📷 | F1.2, F1.3 |
+| M1 | `GET /bridge/state` · `GET /bridge/stats?group=hour\|day\|month\|year&date_from&date_to` | — | |
+| M1 | `POST /bridge/reset?reset_dem=` | 🧑‍💼 | |
+| M1 | `POST /bridge/heartbeat` · `GET /bridge/cameras` | 📷 / — | F1.1, NFR-03 |
+| M1 | `POST /occupancy` `{count, status}` · `GET /stats/occupancy` · `GET /stats/occupancy/history?minutes=60` | 📷 / — | |
+| M1 | `GET /stats/current` → `{current_count, current_status, status_stale, alert_threshold, entries_today, facade_today, profiles_today, gender_today, open_incidents, last_update}` | — | F5.1 |
+| M1 | `POST /facade_pass` `{camera_id, count}` · `GET /stats/facade?date=` | 📷 / — | F1.4 |
+| M1 | `POST /visit_events` `{track_id, age, age_range, gender, origin, camera_id}` | 📷 | F3.2, origin = `Trong nuoc` \| `Nuoc ngoai` \| null |
+| M1 | `GET /visit_events?date_from&date_to&gender&age_range&origin&limit` | — | gender=`unknown` lọc "Không xác định" |
+| M1 | `GET /stats/demographics?date_from&date_to` → `{total, identified, unknown, gender, age_range, origin, by_hour}` | — | F3.3, BRULE-06 |
+| M3 | `POST /system_events` `{event_type, count, message, camera_id}` | 📷 | mở/đóng sự cố + gửi Telegram |
+| M3 | `GET /system_events?limit&event_type` | — | có `label` tiếng Việt |
+| M3 | `GET /incidents?status=open\|closed\|all` | — | F2.4 |
+| M3 | `POST /incidents/{id}/ack` `{note}` · `POST /incidents/{id}/close` | 👤 | FR-07 |
+| M4 | `GET /reports/summary?period=day\|week\|month&date=` | — | F5.2; PDF/Excel xuất ở frontend |
+| M5 | `POST /tickets` `{date, hour?, ticket_count}` · `POST /tickets/bulk` · `GET /tickets` · `DELETE /tickets/{id}` | 👤 | F4.1 |
+| M5 | `GET /tickets/reconciliation?date=` → `{mode, entries_counted, compared_entries, tickets_sold, gap, gap_rate_pct, by_hour}` | — | F4.2, BRULE-08 |
+| M7 | `GET /config` → `{alert_threshold, warning_threshold, open_time, close_time, is_open_now, ...}` · `PUT /config` | — / 🔑 | F6.2, FR-13 |
+| M7 | `GET /recipients` · `POST/PUT/DELETE /recipients` · `POST /recipients/{id}/test` | 👤 / 🔑 | F6.3 |
+| M7 | `GET /privacy/summary` · `POST /privacy/purge?older_than_days=` (≥ 730) | 🧑‍💼 / 🔑 | BRULE-09 |
 
-| Chức năng | Phương thức + đường dẫn | Trạng thái | Backend | Frontend dùng |
-|---|---|---|---|---|
-| — | `GET /health` | Chạy | Minh | app.py |
-| F1.3 | `POST /entry` `{track_id, age, age_range, gender}` | Chạy | Minh | camera_in.py |
-| F1.3 | `POST /exit` | Chạy | Minh | camera_out.py |
-| F1.2 | `POST /occupancy` `{count, status}` | Chạy | Minh | camera |
-| F1.2 | `GET /stats/occupancy` → `{current_count}` | Chạy | Minh | camera, Bảng LED |
-| F5.1 | `GET /stats/current` → `{current_count, current_status, total_visitors_logged, gender_breakdown, average_age}` | Chạy | Minh | Tổng quan, Bảng LED |
-| F5.1 | `GET /stats/occupancy/history?limit=` → `[{timestamp, count, status}]` | Chạy | Minh | Tổng quan (Khánh) |
-| F1.4 | `POST /facade_pass`, `GET /stats/facade?date=` → `{date, by_hour:[{hour, facade_passes}]}` | Mock | Minh (S5) | Báo cáo |
-| F2 | `POST /system_events` `{event_type, count, message}` | Chạy | Minh | camera |
-| F2 | `GET /system_events?limit=` | Chạy | Minh | — |
-| F2.4 | `GET /incidents` → `[{id, timestamp, event_type, count, message, acknowledged, acked_at, acked_by, handle_seconds}]` | Nửa thật* | Hoan (S4) | Trực ca |
-| F2.4 | `POST /incidents/{id}/ack?acked_by=&note=` | Mock | Hoan (S4) | Trực ca |
-| F3.2 | `POST /visit_events`, `GET /visit_events?limit=&gender=&age_range=` | Chạy | Minh | Lịch sử |
-| F3.3 | `GET /stats/demographics?date=` → `{date, by_hour:[{hour, Man, Woman}], age_range:{}, domestic_vs_foreign:{}}` | Mock | Minh (S4) | Cơ cấu khách (Hoan) |
-| F3.3 | `POST /region_stats`, `GET /stats/region` | Chạy | Minh | — |
-| F4.1 | `POST /tickets` `{date, hour, ticket_count, entered_by}` | Mock | Hoan (S5) | Đối chiếu vé |
-| F4.2 | `GET /tickets/reconciliation?date=` → `{entries_counted, tickets_sold, gap, gap_rate_pct, by_hour:[]}` | Mock | Hoan (S5) | Đối chiếu vé |
-| F5.2 | `GET /reports/summary?period=day\|week\|month&date=` → `{total_entries, peak_hour, peak_count, by_day:[], gender:{}, age_range:{}, alerts:{}, avg_handle_seconds}` | Mock | Hoan (S4–5) | Báo cáo |
-| F6.2 | `GET /config`, `PUT /config` `{alert_threshold}` | Chạy | Minh | Ngưỡng cảnh báo (Khánh) |
-| F6.3 | `GET /recipients`, `POST /recipients` `{name, channel, address, active}`, `DELETE /recipients/{id}` | Mock (lưu tạm RAM) | Khánh (S4) | Người nhận cảnh báo |
-| F6.1 | `POST /auth/login` `{username, password}` → `{username, role}` | Mock | Minh (S5) | app.py |
-
-\* `/incidents` đọc sự cố thật từ `system_events`; các trường xử lý (`acknowledged`…) chưa lưu thật.
+`event_type`: `WARNING`, `CRITICAL_ALERT`, `CRITICAL_CLEARED`, `GROUP_DETECTED`, `CAMERA_LOST`, `CAMERA_RESTORED`, `GATE_CLOSED`, `GATE_REOPENED`.
 
 ## Quy ước
 
-- Thời gian trả về dạng ISO `YYYY-MM-DDTHH:MM:SS` (UTC, như hiện tại). Ngày nhập vào dạng `YYYY-MM-DD`.
-- Giới tính luôn là `"Man"` / `"Woman"` (giá trị gốc của DeepFace); giao diện tự đổi sang Nam / Nữ.
-- Bảng CSDL mới của module nào khai báo **trong file router của module đó**, không sửa `backend/models.py` (tránh xung đột).
-- Khi thay mock bằng dữ liệu thật: xóa khóa `"mock"` → giao diện tự ẩn dòng "Đang hiển thị dữ liệu mẫu".
+- Thời gian trả về dạng ISO UTC; frontend cộng `utc_offset_hours` lấy từ `GET /health` (mặc định +7). Ngày nhập vào dạng `YYYY-MM-DD` theo giờ Việt Nam.
+- Giới tính luôn là `"Man"` / `"Woman"` / `null`; giao diện đổi sang Nam / Nữ / Không xác định.
+- Bảng CSDL mới của module nào khai báo trong file router của module đó; cột mới tự được bổ sung vào `smartcau.db` cũ khi khởi động.

@@ -1,73 +1,383 @@
 """
-tests/test_api.py  —  Kiem thu nhanh backend sau khi to chuc lai thu muc
-=========================================================================
-CHAY (tu thu muc goc):   pip install pytest httpx   (1 lan)
-                         pytest tests/test_api.py -q
-
+tests/test_api.py  —  Kiem thu backend (7 module)
+=================================================
+CHAY (tu thu muc goc):   pytest tests/ -q
 Dung CSDL rieng trong bo nho (khong dung toi backend/smartcau.db that).
-Moi lan ai do sua backend -> chay lai file nay TRUOC khi tao Pull Request.
 """
 
 import os
 import sys
+from datetime import datetime, timedelta
 
 os.environ["SMARTCAU_DATABASE_URL"] = "sqlite:///:memory:"
+os.environ["SMARTCAU_DISABLE_SCHEDULER"] = "1"
 sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), ".."))
 
+import pytest  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 
 import backend.database as database  # noqa: E402
 
-# SQLite in-memory can dung chung 1 ket noi cho moi request
 database.engine = database.create_engine(
     "sqlite://", connect_args={"check_same_thread": False}, poolclass=StaticPool)
 database.SessionLocal.configure(bind=database.engine)
 
+from backend import notify  # noqa: E402
 from backend.main import app  # noqa: E402
 
-database.Base.metadata.create_all(bind=database.engine)
 client = TestClient(app)
+SENT = []
+notify.deliver_async = lambda recipients, text: SENT.append(text)   # khong gui Telegram that
+notify.deliver = lambda recipients, text: [{"name": "x", "channel": "telegram", "status": "ok"}] if SENT.append(text) is None else []
+DOCS = []
+notify.deliver_document = lambda recipients, fn, content, caption="": DOCS.append((fn, content)) or [
+    {"name": "x", "channel": "telegram", "status": "ok"}]
 
 
+def login(username="admin", password="admin123"):
+    r = client.post("/auth/login", json={"username": username, "password": password})
+    assert r.status_code == 200, r.text
+    return {"Authorization": f"Bearer {r.json()['token']}"}
+
+
+ADMIN = login()
+
+
+# ------------------------------------------------------------- M2 nen tang
 def test_health():
-    assert client.get("/health").json()["status"] == "ok"
+    d = client.get("/health").json()
+    assert d["status"] == "ok" and d["utc_offset_hours"] == 7
 
 
-def test_entry_exit_updates_occupancy():
-    start = client.get("/stats/occupancy").json()["current_count"]
-    client.post("/entry", json={"gender": "Woman", "age_range": "18-24", "age": 21})
-    client.post("/entry", json={"gender": "Man", "age_range": "25-34", "age": 30})
-    client.post("/exit")
-    assert client.get("/stats/occupancy").json()["current_count"] == start + 1
+def test_default_admin_must_change_password():
+    me = client.get("/auth/me", headers=ADMIN).json()
+    assert me["role"] == "admin" and me["must_change_password"] is True
 
 
-def test_exit_never_negative():
-    for _ in range(10):
-        client.post("/exit")
-    assert client.get("/stats/occupancy").json()["current_count"] == 0
+def test_wrong_password_and_no_token():
+    assert client.post("/auth/login", json={"username": "admin", "password": "sai"}).status_code == 401
+    assert client.get("/users").status_code == 401
+    assert client.get("/users", headers={"Authorization": "Bearer khong-hop-le"}).status_code == 401
 
 
-def test_config_roundtrip():
-    assert client.put("/config", json={"alert_threshold": 25}).json()["alert_threshold"] == 25
-    assert client.get("/config").json()["alert_threshold"] == 25
-    assert client.put("/config", json={"alert_threshold": 0}).status_code == 400
+def test_roles_and_account_lifecycle():
+    r = client.post("/users", headers=ADMIN, json={"username": "truc1", "full_name": "Lê Hoan",
+                                                    "password": "truc123", "role": "nguoi_truc"})
+    assert r.status_code == 200, r.text
+    uid = r.json()["id"]
+    assert client.post("/users", headers=ADMIN, json={"username": "truc1", "password": "abcdef"}).status_code == 400
+    truc = login("truc1", "truc123")
+    # FR-12: nguoi truc khong vao duoc chuc nang cau hinh
+    assert client.put("/config", headers=truc, json={"alert_threshold": 30}).status_code == 403
+    assert client.get("/users", headers=truc).status_code == 403
+    # doi mat khau
+    assert client.post("/auth/change_password", headers=truc,
+                       json={"old_password": "truc123", "new_password": "moi12345"}).status_code == 200
+    login("truc1", "moi12345")
+    # khoa tai khoan -> token cu mat hieu luc, khong dang nhap duoc
+    assert client.put(f"/users/{uid}", headers=ADMIN, json={"active": False}).status_code == 200
+    assert client.get("/auth/me", headers=truc).status_code == 401
+    assert client.post("/auth/login", json={"username": "truc1", "password": "moi12345"}).status_code == 403
 
 
-def test_visit_event_filter():
-    client.post("/visit_events", json={"gender": "Woman", "age_range": "35-44"})
-    rows = client.get("/visit_events", params={"gender": "Woman", "age_range": "35-44"}).json()
-    assert rows and all(r["gender"] == "Woman" for r in rows)
+def test_cannot_remove_last_admin():
+    me = client.get("/auth/me", headers=ADMIN).json()
+    assert client.put(f"/users/{me['id']}", headers=ADMIN, json={"role": "quan_ly"}).status_code == 400
 
 
-def test_incidents_read_system_events():
-    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 22})
-    items = client.get("/incidents").json()
-    assert items[0]["event_type"] == "CRITICAL_ALERT"
+# ------------------------------------------------------------- M7 quan tri
+def test_config_roundtrip_and_audit():
+    r = client.put("/config", headers=ADMIN, json={"alert_threshold": 25, "open_time": "06:30"})
+    assert r.status_code == 200
+    d = client.get("/config").json()
+    assert d["alert_threshold"] == 25 and d["warning_threshold"] == 19 and d["open_time"] == "06:30"
+    assert client.put("/config", headers=ADMIN, json={"alert_threshold": 0}).status_code == 400
+    assert client.put("/config", headers=ADMIN, json={"close_time": "25:00"}).status_code == 400
+    log = client.get("/audit", headers=ADMIN).json()
+    assert any(e["action"] == "Đổi cấu hình" and "25" in e["detail"] for e in log)
+    client.put("/config", headers=ADMIN, json={"alert_threshold": 20, "open_time": "00:00", "close_time": "23:59"})
 
 
-def test_skeleton_endpoints_answer():
-    for path in ("/stats/demographics", "/reports/summary", "/tickets/reconciliation",
-                 "/recipients", "/stats/facade"):
-        r = client.get(path)
-        assert r.status_code == 200, path
+def test_recipients_crud():
+    r = client.post("/recipients", headers=ADMIN, json={"name": "Trực đầu cầu", "channel": "telegram",
+                                                         "address": "12345"})
+    rid = r.json()["id"]
+    assert any(x["id"] == rid for x in client.get("/recipients", headers=ADMIN).json())
+    assert client.put(f"/recipients/{rid}", headers=ADMIN, json={"active": False}).json()["active"] is False
+    assert client.post("/recipients", headers=ADMIN, json={"name": "", "address": "1"}).status_code == 400
+    assert client.delete(f"/recipients/{rid}", headers=ADMIN).status_code == 200
+
+
+def test_privacy_purge_respects_retention():
+    assert client.get("/privacy/summary", headers=ADMIN).json()["face_images_stored"] == 0
+    assert client.post("/privacy/purge", headers=ADMIN, params={"older_than_days": 30}).status_code == 400
+    assert client.post("/privacy/purge", headers=ADMIN, params={"older_than_days": 730}).status_code == 200
+
+
+# ------------------------------------------------------------- M3 su co
+def test_incident_lifecycle():
+    SENT.clear()
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 22, "message": "Đỏ"})
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 25, "message": "Nhắc lại"})
+    opened = client.get("/incidents", params={"status": "open"}).json()
+    assert len(opened) == 1 and opened[0]["peak_count"] == 25 and opened[0]["alert_count"] == 2
+    iid = opened[0]["id"]
+    acked = client.post(f"/incidents/{iid}/ack", headers=ADMIN, json={"note": "Đã điều tiết"}).json()
+    assert acked["acknowledged"] and acked["handle_seconds"] is not None
+    client.post("/system_events", json={"event_type": "CRITICAL_CLEARED", "count": 14})
+    closed = client.get("/incidents", params={"status": "closed"}).json()
+    assert closed[0]["id"] == iid and closed[0]["close_reason"] == "auto"
+    assert any("ĐÃ ĐÓNG" in t for t in SENT)               # bao cao su co gui quan ly
+    assert client.post(f"/incidents/{iid}/ack").status_code == 401
+
+
+def test_events_have_vietnamese_labels():
+    client.post("/system_events", json={"event_type": "GROUP_DETECTED", "count": 12})
+    e = client.get("/system_events", params={"event_type": "GROUP_DETECTED"}).json()[0]
+    assert e["label"] == "Đoàn khách lớn"
+
+
+# ------------------------------------------------------------- M1 dem + nhan khau hoc
+def _cross(cam, direction):
+    r = client.post("/bridge/crossing", json={"camera_id": cam, "direction": direction})
+    assert r.status_code == 200, r.text
+    return r.json()
+
+
+def test_bridge_counting_rules():
+    client.post("/bridge/reset", headers=ADMIN, params={"reset_dem": True})
+    assert client.get("/bridge/state").json()["dem"] == 0
+    s = _cross(1, "in")
+    assert (s["num1"], s["num2"], s["onbridge"], s["dem"]) == (1, 0, 1, 1)
+    _cross(1, "in")
+    s = _cross(2, "in")
+    assert (s["num1"], s["num2"], s["onbridge"], s["dem"]) == (2, 1, 3, 3)
+    _cross(2, "out")
+    s = _cross(2, "out")
+    assert (s["num1"], s["num2"], s["onbridge"]) == (2, -1, 1)
+    s = _cross(1, "out")
+    assert (s["num1"], s["num2"], s["onbridge"], s["reset"]) == (0, 0, 0, True)
+    assert s["dem"] == 3
+    s = _cross(2, "out")
+    assert (s["num1"], s["num2"], s["onbridge"]) == (0, 0, 0)
+    _cross(1, "in")
+    assert client.get("/stats/occupancy").json()["current_count"] == 1
+    assert client.post("/bridge/reset").status_code == 401
+
+
+def test_bridge_validation():
+    assert client.post("/bridge/crossing", json={"camera_id": 3, "direction": "in"}).status_code == 400
+    assert client.post("/bridge/crossing", json={"camera_id": 1, "direction": "len"}).status_code == 400
+    assert client.get("/bridge/stats", params={"group": "tuan"}).status_code == 400
+
+
+def test_bridge_dem_resets_on_new_day(monkeypatch):
+    import backend.routers.bridge as bridge
+    client.post("/bridge/reset", headers=ADMIN, params={"reset_dem": True})
+    _cross(1, "in")
+    _cross(2, "in")
+    assert client.get("/bridge/state").json()["dem"] == 2
+    tomorrow = datetime.utcnow() + bridge.LOCAL_UTC_OFFSET + timedelta(days=1)
+    monkeypatch.setattr(bridge, "_local_now", lambda: tomorrow)
+    s = client.get("/bridge/state").json()
+    assert s["dem"] == 0 and s["date"] == tomorrow.strftime("%Y-%m-%d")
+    assert _cross(1, "in")["dem"] == 1
+
+
+def test_bridge_stats_grouping():
+    today = client.get("/bridge/state").json()["date"]
+    for group in ("hour", "day", "month", "year"):
+        d = client.get("/bridge/stats", params={"group": group, "date_from": today, "date_to": today}).json()
+        assert d["total_entries"] == sum(r["entries"] for r in d["rows"])
+
+
+def test_camera_heartbeat():
+    client.post("/bridge/heartbeat", json={"camera_id": 1, "source": "0", "fps": 14.6, "sends_alerts": True})
+    cams = {c["camera_id"]: c for c in client.get("/bridge/cameras").json()}
+    assert cams[1]["online"] and cams[1]["fps"] == 15 and cams[2]["online"] is False
+
+
+def test_facade_and_current_stats():
+    client.post("/facade_pass", json={"camera_id": 1})
+    client.post("/facade_pass", json={"camera_id": 2, "count": 2})
+    assert client.get("/stats/facade").json()["total"] >= 3
+    cur = client.get("/stats/current").json()
+    assert cur["facade_today"] >= 3 and cur["entries_today"] >= 1 and "open_incidents" in cur
+
+
+def test_demographics_excludes_unknown():
+    for g, a, o in [("Woman", "25-34", "Trong nuoc"), ("Man", "18-24", "Nuoc ngoai"),
+                    ("Woman", "25-34", "Nuoc ngoai"), (None, "Khong xac dinh", None)]:
+        client.post("/visit_events", json={"gender": g, "age_range": a, "origin": o})
+    d = client.get("/stats/demographics").json()
+    assert d["unknown"] >= 1 and d["identified"] == d["total"] - d["unknown"]
+    assert d["gender"]["Woman"] >= 2 and d["origin"]["Nuoc ngoai"] >= 2
+    rows = client.get("/visit_events", params={"gender": "unknown"}).json()
+    assert rows and all(r["gender"] is None for r in rows)
+    rows = client.get("/visit_events", params={"origin": "Trong nuoc"}).json()
+    assert rows and all(r["origin"] == "Trong nuoc" for r in rows)
+
+
+# ------------------------------------------------------------- M4 bao cao
+def test_report_summary_real_data():
+    for period in ("day", "week", "month"):
+        d = client.get("/reports/summary", params={"period": period}).json()
+        assert "mock" not in d
+        assert d["total_entries"] == sum(x["entries"] for x in d["by_day"])
+        assert len(d["by_day"]) == {"day": 1, "week": 7, "month": 30}[period]
+    day = client.get("/reports/summary", params={"period": "day"}).json()
+    assert day["total_entries"] == sum(x["entries"] for x in day["by_15min"])
+    assert len(day["time_slots"]) == 4 and day["incidents"] >= 1
+    assert client.get("/reports/summary", params={"period": "nam"}).status_code == 400
+
+
+# ------------------------------------------------------------- M5 doi chieu ve
+def test_ticket_reconciliation():
+    today = client.get("/bridge/state").json()["date"]
+    entries = client.get("/tickets/reconciliation", params={"date": today}).json()["entries_counted"]
+    assert entries > 0
+    assert client.post("/tickets", json={"date": today, "ticket_count": 1}).status_code == 401
+    client.post("/tickets", headers=ADMIN, json={"date": today, "ticket_count": entries - 1})
+    client.post("/tickets", headers=ADMIN, json={"date": today, "ticket_count": entries - 1})  # ghi de, khong nhan doi
+    d = client.get("/tickets/reconciliation", params={"date": today}).json()
+    assert d["tickets_sold"] == entries - 1 and d["gap"] == 1
+    assert d["gap_rate_pct"] == pytest.approx(round(1 / entries * 100, 1))
+    assert len(client.get("/tickets", params={"date_from": today, "date_to": today}).json()) == 1
+    assert client.post("/tickets", headers=ADMIN, json={"date": "04/11/2026", "ticket_count": 1}).status_code == 400
+
+
+# ------------------------------------------------- KPI O1/O4/O5, bao sai, heatmap, bao cao ngay
+def test_false_alarm_and_kpis():
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 24})
+    iid = client.get("/incidents", params={"status": "open"}).json()[0]["id"]
+    assert client.post(f"/incidents/{iid}/false_alarm", json={"note": "bóng người"}).status_code == 401
+    d = client.post(f"/incidents/{iid}/false_alarm", headers=ADMIN, json={"note": "bóng người"}).json()
+    assert d["false_alarm"] and d["false_note"] == "bóng người"
+    client.post("/system_events", json={"event_type": "CRITICAL_CLEARED", "count": 10})
+    client.post("/occupancy", json={"count": 99, "status": "CRITICAL"})
+    k = client.get("/reports/summary", params={"period": "day"}).json()["kpis"]
+    assert k["o1_minutes_over"] >= 1
+    assert k["o5_false_alarms"] >= 1 and 0 < k["o5_false_alarm_pct"] <= 100
+    assert k["o4_real_incidents"] >= 1 and k["o4_handled_within_3min_pct"] is not None
+    # bo danh dau
+    assert client.post(f"/incidents/{iid}/false_alarm", headers=ADMIN, json={"is_false": False}).json()["false_alarm"] is False
+
+
+def test_heatmap_shape_and_totals():
+    d = client.get("/reports/heatmap").json()
+    assert len(d["cells"]) == 7 and all(len(r) == 24 for r in d["cells"])
+    total = sum(map(sum, d["cells"]))
+    bridge_total = client.get("/bridge/stats", params={"group": "year", "date_from": d["date_from"],
+                                                         "date_to": d["date_to"]}).json()["total_entries"]
+    assert total == bridge_total and sum(d["days"]) == 56
+    assert client.get("/reports/heatmap", params={"date_from": "2026-12-01", "date_to": "2026-11-01"}).status_code == 400
+
+
+def test_daily_report_after_closing_time():
+    from datetime import datetime as dt
+    from backend import daily_report
+    from backend.database import SessionLocal
+    from backend.timeutil import local_now
+    client.put("/config", headers=ADMIN, json={"open_time": "07:00", "close_time": "21:30"})
+    today = local_now().replace(hour=0, minute=0, second=0, microsecond=0)
+    with SessionLocal() as db:
+        before = daily_report.run_due(db, today.replace(hour=12), send=False)
+        assert today.strftime("%Y-%m-%d") not in before          # chua toi gio dong cua
+        DOCS.clear()
+        made = daily_report.run_due(db, today.replace(hour=21, minute=31), send=True)
+        assert today.strftime("%Y-%m-%d") in made
+        assert daily_report.run_due(db, today.replace(hour=22), send=True) == []   # khong lap lai
+    lst = client.get("/reports/daily").json()
+    assert lst[0]["date"] == today.strftime("%Y-%m-%d")
+    pdf = client.get(f"/reports/daily/{lst[0]['date']}/pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+    r = client.post(f"/reports/daily/{lst[0]['date']}/send", headers=ADMIN).json()
+    assert r["sent_at"] and "Đã gửi" in r["delivery"] and DOCS and DOCS[-1][1][:4] == b"%PDF"
+    assert "BÁO CÁO NGÀY" in daily_report.summary_text(client.get("/reports/summary").json())
+    assert client.post(f"/reports/daily/{lst[0]['date']}/send").status_code == 401
+    client.put("/config", headers=ADMIN, json={"open_time": "00:00", "close_time": "23:59"})
+
+
+# ------------------------------------------------- ket noi Telegram tren giao dien
+class _FakeResp:
+    def __init__(self, data, code=200):
+        self._d, self.status_code = data, code
+
+    def json(self):
+        return self._d
+
+
+def test_telegram_connect_and_find_chats(monkeypatch):
+    calls = []
+
+    def fake_post(url, json=None, timeout=None, **kw):
+        calls.append(url)
+        if "BADTOKEN" in url:
+            return _FakeResp({"ok": False, "description": "Unauthorized"}, 401)
+        if url.endswith("/getMe"):
+            return _FakeResp({"ok": True, "result": {"username": "smartcau_bot", "first_name": "SmartCau"}})
+        if url.endswith("/getUpdates"):
+            return _FakeResp({"ok": True, "result": [
+                {"message": {"chat": {"id": 111, "first_name": "Lê", "last_name": "Hoan", "type": "private"}}},
+                {"message": {"chat": {"id": -222, "title": "Nhóm trực Chùa Cầu", "type": "group"}}},
+                {"message": {"chat": {"id": 111, "first_name": "Lê", "last_name": "Hoan", "type": "private"}}}]})
+        return _FakeResp({"ok": True, "result": {}})
+
+    monkeypatch.setattr(notify.requests, "post", fake_post)
+    monkeypatch.setattr(notify, "ENV_TELEGRAM_TOKEN", "")
+    notify.set_db_token("")
+    assert client.get("/telegram/status", headers=ADMIN).json()["connected"] is False
+    assert client.put("/telegram/token", headers=ADMIN, json={"token": "khong-hop-le"}).status_code == 400
+    assert client.put("/telegram/token", headers=ADMIN, json={"token": "1:BADTOKEN"}).status_code == 400
+    r = client.put("/telegram/token", headers=ADMIN, json={"token": "123:GOODTOKEN"}).json()
+    assert r["bot"]["username"] == "smartcau_bot"
+    st = client.get("/telegram/status", headers=ADMIN).json()
+    assert st["connected"] and st["source"] == "db"
+    chats = client.get("/telegram/chats", headers=ADMIN).json()
+    assert {c["chat_id"] for c in chats} == {"111", "-222"} and any(c["name"] == "Lê Hoan" for c in chats)
+    assert notify._send_telegram("111", "thử") == "ok"
+    assert client.get("/telegram/chats").status_code == 401
+    assert client.delete("/telegram/token", headers=ADMIN).json()["connected"] is False
+    assert "Chưa kết nối bot" in notify._send_telegram("111", "thử")
+
+
+# ------------------------------------------------- nhan dinh & du bao
+def test_insights_live_trend_wait_and_forecast():
+    from backend.database import SessionLocal
+    from backend.routers.bridge import BridgeCrossing
+    from backend.timeutil import local_now
+    now = local_now()
+    with SessionLocal() as db:            # lich su: cung thu 1 tuan truoc, moi gio 10 luot
+        for h in range(24):
+            for _ in range(10):
+                t = (now - timedelta(days=7)).replace(hour=h, minute=30)
+                db.add(BridgeCrossing(timestamp=t, local_time=t, camera_id=1, direction="in", onbridge_after=0))
+        db.commit()
+    client.post("/bridge/reset", headers=ADMIN, params={"reset_dem": True})
+    for _ in range(12):
+        _cross(1, "in")
+    _cross(2, "out")
+    d = client.get("/insights/live").json()
+    assert d["trend"] == "tăng" and d["in_per_min"] >= round(12 / 5, 1) and d["net_per_min"] > 0
+    assert len(d["forecast"]) == 24 and d["history_days"] >= 1
+    assert d["forecast"][23]["actual"] is None or now.hour == 23
+    if d["onbridge"] <= d["capacity"]:
+        assert d["minutes_to_full"] is not None
+    # FR-17: qua tai -> thoi gian cho
+    for _ in range(15):
+        _cross(1, "in")
+    d = client.get("/insights/live").json()
+    assert d["onbridge"] > d["capacity"] and d["wait_label"] in ("Dưới 3 phút", "3–5 phút", "Trên 5 phút")
+
+
+def test_insights_summary_sentences():
+    items = client.get("/insights/summary").json()["items"]
+    assert items and all({"tone", "title", "text"} <= set(i) for i in items)
+    assert any(i["title"] in ("So với tuần trước", "Lượt khách hôm nay") for i in items)
+
+
+def test_wait_buckets():
+    from backend.routers.insights import wait_bucket
+    assert wait_bucket(1) == "Dưới 3 phút" and wait_bucket(4) == "3–5 phút" and wait_bucket(9) == "Trên 5 phút"
+    assert wait_bucket(None) is None
