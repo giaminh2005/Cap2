@@ -63,7 +63,9 @@ Chỉ camera 1 gửi mức cảnh báo Vàng/Đỏ; cả hai đều gửi lượ
 | Màn hình | Địa chỉ |
 |---|---|
 | Web quản lý (đăng nhập theo vai trò) | `http://192.168.1.10:8501` |
-| Bảng LED đầu cầu (Chrome/Edge, F11) | `http://192.168.1.10:8000/led/` |
+| Bảng LED đầu cầu 1 (Chrome/Edge, F11) | `http://192.168.1.10:8000/led/?dau=1` |
+| Bảng LED đầu cầu 2 | `http://192.168.1.10:8000/led/?dau=2` |
+| Xem song song 2 bảng LED | `http://192.168.1.10:8000/led/hai-man-hinh.html` |
 | Tài liệu API | `http://192.168.1.10:8000/docs` |
 
 Trang **Camera** trong web cho biết camera nào đang chạy trên **máy nào**, tốc độ khung hình và lúc mất tín hiệu.
@@ -74,13 +76,14 @@ Trang **Camera** trong web cho biết camera nào đang chạy trên **máy nào
 |---|---|---|
 | Laptop A (máy chủ + camera 1) | Chân cầu 1, máy chủ | Minh |
 | Laptop B (camera 2) | Chân cầu 2 | Hoan |
-| Laptop / máy chiếu C | Bảng LED đầu cầu | — |
+| Laptop / máy chiếu C | Bảng LED đầu cầu 1 (`?dau=1`) | — |
+| Laptop / máy chiếu D (nếu có) | Bảng LED đầu cầu 2 (`?dau=2`) | — |
 | Điện thoại của Khánh | Người trực: trang *Trực ca & sự cố* | Khánh |
 | Laptop của giảng viên | Quản lý: *Tổng quan*, *Báo cáo* | — |
 
 1. Đặt sức chứa = 3 ở trang *Ngưỡng & giờ hoạt động* để dễ lên Vàng/Đỏ.
 2. Hai người đi vào qua vạch ở camera 1, một người ở camera 2 → *Lượt qua cầu* thấy `num1 = 2, num2 = 1, onbridge = 3`, bảng LED chuyển Vàng.
-3. Thêm một người vào, đứng trên 15 giây → Đỏ: LED đổi màu và Linh Thân giơ tay ngăn, điện thoại người trực nhận thông báo, Telegram báo sự cố.
+3. Thêm một người vào, đứng trên 15 giây → Đỏ: cả 2 bảng LED đổi màu, nhân vật canh đi vào giơ tay ngăn, điện thoại người trực nhận thông báo, Telegram báo sự cố.
 4. Người trực bấm **Đã xử lý** trên điện thoại; mọi người đi ra ở camera 2 → sự cố tự đóng, `num1`, `num2` tự về 0.
 5. Rút dây webcam ở laptop B → trang *Camera* và Telegram báo mất tín hiệu, cắm lại thì tự kết nối.
 

@@ -45,7 +45,7 @@ ALL, MANAGER, ADMIN = ("admin", "quan_ly", "nguoi_truc"), ("admin", "quan_ly"), 
 PAGES = [
     ("Vận hành", "views/tong_quan.py", "Tổng quan", ":material/space_dashboard:", ALL),
     ("Vận hành", "views/truc_ca.py", "Trực ca & sự cố", ":material/notifications_active:", ALL),
-    ("Vận hành", "views/bang_led.py", "Bảng LED tại chỗ", ":material/traffic:", ALL),
+    ("Vận hành", "views/bang_led.py", "Bảng LED hai đầu cầu", ":material/traffic:", ALL),
     ("Vận hành", "views/luot_qua_cau.py", "Lượt qua cầu", ":material/swap_horiz:", ALL),
     ("Vận hành", "views/doi_chieu_ve.py", "Đối chiếu vé", ":material/confirmation_number:", ALL),
     ("Phân tích", "views/co_cau_khach.py", "Cơ cấu khách", ":material/groups:", MANAGER),
