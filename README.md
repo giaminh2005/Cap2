@@ -1,5 +1,7 @@
 # SmartCau AI — Camera AI quản lý đám đông Chùa Cầu (Nhóm 50 · 49K22.3)
 
+> **Tài liệu tổng thể mã nguồn (chức năng ↔ tệp code, API, CSDL, tra lỗi):** [`docs/TONG_QUAN_MA_NGUON.md`](docs/TONG_QUAN_MA_NGUON.md). Khi nhờ AI sửa lỗi, gửi kèm tệp này.
+
 Hệ thống đếm khách trên Chùa Cầu bằng 2 camera đặt ở 2 chân cầu, cảnh báo quá tải Vàng/Đỏ, ước lượng giới tính, độ tuổi, khách trong nước/châu Á hay quốc tế, và trang web quản lý cho người trực, quản lý và quản trị viên.
 
 ## Kiến trúc 3 lớp
