@@ -275,7 +275,12 @@ Mỗi chức năng ghi: **làm gì → quy tắc → tệp code → API → bả
 - **CSDL:** `incidents`, `system_events`.
 
 ### 5.6 Nhận diện giới tính, tuổi, nguồn khách (M1 · F3.2)
-- **Luồng:** `VisitorProfiler.observe` (mỗi 0,3 giây / người) → `face_quality` (mắt đủ to ≥14 px, nhìn thẳng, không nhòe) → `AsyncEngine.update` (đẩy việc sang luồng `deepface`) → `DemographicsEngine.update` → `age_gender_estimator.estimate_demographics_from_person_box` → DeepFace → `TemporalVoter` bỏ phiếu nhiều khung (≥3 phiếu, tin cậy ≥70%).
+- **Luồng:** `VisitorProfiler.observe` (mỗi 0,3 giây / người; đã chốt kết quả thì 1,5 giây) → `face_quality` (mắt đủ to ≥14 px, nhìn thẳng, không nhòe) → `AsyncEngine.update` (đẩy việc sang luồng `deepface`, đo `avg_ms`) → `DemographicsEngine.update`:
+  - **Đường nhanh (mặc định với model pose):** `age_gender_estimator.align_face_from_keypoints` dùng 2 mắt + mũi của YOLO-pose để xoay cho 2 mắt nằm ngang và cắt đúng khuôn mặt 224×224 (2 mắt ở 38% chiều cao, cách nhau 33% chiều rộng) → `estimate_from_aligned_face` gọi DeepFace với `detector_backend="skip"` (bỏ bước tìm mặt) → nếu giới tính < 85% chắc chắn thì phân tích thêm ảnh lật gương và lấy trung bình (`TTA_BELOW`).
+  - **Đường dự phòng** (model không có keypoint): `estimate_demographics_from_person_box` (DeepFace tự tìm mặt trong khung người).
+  - `TemporalVoter` bỏ phiếu nhiều khung (≥3 phiếu, tỷ lệ ≥70%). **Trọng số phiếu = (độ chắc − 50%) / 50%**: phiếu 55% gần như không tính, phiếu 99% tính gần đủ.
+  - Ước lượng chủng tộc (`race`, cho nguồn khách) chỉ chạy tới khi đủ `RACE_VOTES = 4` lần cho mỗi người, sau đó chỉ chạy tuổi + giới tính → nhanh hơn.
+  - HUD hiện `mặt xx ms` = thời gian trung bình một lần phân tích mặt.
 - **Nguồn khách:** DeepFace `race` → `region_mapping.classify_region_from_deepface_race` → `REGION_TO_ORIGIN` ("Dong A / Noi dia" → `Trong nuoc`, còn lại → `Nuoc ngoai`); phải chiếm ≥55% phiếu (`ORIGIN_MIN_SHARE`).
 - **Lưu:** khi khách **đã qua vạch vào** và kết quả sẵn sàng → `POST /visit_events`. Sau 5 giây vào cầu mà chưa ra kết quả → lưu "Không xác định" (`_save_unknown`). Khách đi **ra** mà chưa vào → không lưu.
 - **Hiển thị trên camera** (`VisitorProfiler.label`): "VÀO CẦU · ID n", "Nữ · 25-34", "Trong nước/châu Á"/"Quốc tế"; hoặc "Đang nhận diện…", "Lại gần camera hơn", "Chờ nhìn thẳng", "Hình bị nhòe".
@@ -363,21 +368,29 @@ Mỗi chức năng ghi: **làm gì → quy tắc → tệp code → API → bả
 - **Test:** `test_daily_report_after_closing_time`, `test_morning_brief_and_ticket_reminder_once_per_day`, `test_weekly_report_compares_previous_week`, `test_sheets_auto_sync_skips_when_not_configured`.
 
 ### 5.16 Báo cáo định kỳ, KPI, biểu đồ nhiệt (M4 · F5.2, F5.3)
-- **Tính toán:** `backend/routers/reports.py::report_summary(period=day|week|month, date)`: tổng lượt vào / ra / mặt tiền, theo ngày / giờ / 15 phút / khung buổi, đông nhất, sự kiện, sự cố, cơ cấu khách, KPI:
+- **Kỳ báo cáo** (`reports.period_range`): `day` = 1 ngày; `week` = 7 ngày kết thúc ở `date`; `month` = tháng dương lịch chứa `date`; `year` = năm dương lịch; `custom` = `date_from` → `date_to` (tối đa 3 năm).
+- **So với kỳ trước** (`previous`): tháng → tháng trước, năm → năm trước, còn lại lùi đúng số ngày; kỳ đang diễn ra thì so cùng số ngày đã qua (`same_elapsed_days`).
+- **Tính toán:** `backend/routers/reports.py::report_summary(period, date, date_from, date_to)` — thêm `by_month`, `tickets` (đối chiếu vé từng ngày), `capacity`, `previous`; tổng lượt vào / ra / mặt tiền, theo ngày / giờ / 15 phút / khung buổi, đông nhất, sự kiện, sự cố, cơ cấu khách, KPI:
   - O1 = số phút có ít nhất 1 lần đo vượt sức chứa,
   - O4 = % sự cố thật được xác nhận trong 180 giây,
   - O5 = % sự cố bị đánh dấu báo sai,
   - O8 = % chênh lệch (lượt vào − vé) / lượt vào, chỉ ngày đã nhập vé.
 - **Biểu đồ nhiệt** giờ × thứ: `heatmap()` (8 tuần, theo `local_time`).
-- **Xuất tệp:** `backend/report_export.py` — `report_tables`, `to_excel`, `to_pdf` (font Windows Arial / Segoe UI hoặc DejaVu; không có font thì bỏ dấu).
-- **Web:** **Báo cáo định kỳ** (`frontend/views/bao_cao.py`): chọn kỳ, KPI, biểu đồ, nhận định, bảng, tải Excel / PDF, báo cáo tuần (tải PDF, gửi ngay), danh sách báo cáo ngày (tải PDF, gửi lại).
+- **PDF** (`backend/report_export.py::to_pdf(r, options)`), theo thể thức văn bản hành chính (Nghị định 30/2020): lề trái 30 / phải 15 / trên-dưới 20 mm; font Times New Roman 13 (Linux: Liberation Serif / DejaVu Serif); phần đầu 2 cột (tên cơ quan chủ quản + đơn vị + "Số: …/BC-SCAI" | Quốc hiệu, tiêu ngữ, "Hội An, ngày … tháng … năm …"); tiêu đề "BÁO CÁO"; các mục I–VI (`SECTIONS`); bảng và hình đánh số; nơi nhận + chữ ký; "Trang x/y"; **logo SmartCau in chìm** giữa mỗi trang (`Doc.watermark`, vẽ vector, độ mờ 7%).
+  - Biểu đồ (matplotlib → PNG): `chart_trend` (15 phút / ngày / tháng + đường bình quân), `chart_hours_slots`, `chart_demographics`, `chart_tickets`.
+  - Đoạn văn tự sinh: `_narrative` (tổng lượt, bình quân, so kỳ trước, ngày đông nhất, giờ cao điểm), `_assessment` (đánh giá, kiến nghị theo KPI).
+  - Tùy chỉnh (`PDF_DEFAULTS`): `sections`, `charts`, `report_no`, `prepared_by`, `approver`, `recipients`, `notes`, `org_parent`, `org_name`, `place`. Tên cơ quan mặc định đổi bằng `SMARTCAU_ORG_PARENT`, `SMARTCAU_ORG_NAME`, `SMARTCAU_ORG_PLACE`.
+  - Ngày / tháng chưa tới trong kỳ đang diễn ra bị bỏ khỏi bảng và biểu đồ (`_until_today`).
+  - Báo cáo ngày / tuần tự động gửi Telegram dùng cùng mẫu PDF này.
+- **Web:** **Báo cáo định kỳ** (`frontend/views/bao_cao.py`): chọn kỳ Ngày / Tuần / Tháng / Năm / Tùy chọn; khung "Xuất báo cáo" với **Tùy chỉnh nội dung báo cáo PDF**; nút **Lập báo cáo PDF** rồi **Tải PDF vừa lập**; Xuất Excel; KPI, biểu đồ (kỳ năm theo tháng), biểu đồ nhiệt, bảng, báo cáo tuần, danh sách báo cáo ngày.
 - **API:** `/reports/summary`, `/reports/heatmap`, `/reports/daily`, `/reports/daily/{date}/pdf`, `/reports/daily/{date}/send`, `/reports/weekly/pdf`, `/reports/weekly/send`.
 - **Test:** `test_report_summary_real_data`, `test_false_alarm_and_kpis`, `test_heatmap_shape_and_totals`.
 
 ### 5.17 Đối chiếu vé (M5 · F4.1, F4.2)
 - **Quy tắc:** chỉ so lượt **vào lòng cầu** (không tính mặt tiền); nhập cả ngày hoặc từng giờ; nhập lại cùng ngày / giờ thì ghi đè (`_upsert`); khi nhập theo giờ chỉ so các giờ đã nhập (`compared_entries`).
-- **Tệp:** `backend/routers/tickets.py` (`TicketCount`, `reconciliation`), `frontend/views/doi_chieu_ve.py` (chọn Cả ngày / Từng giờ, khung giờ theo giờ mở cửa và cho biết khung đã nhập, tải mẫu Excel / CSV `template_df`, `to_xlsx`, tải tệp lên bỏ dòng trống, biểu đồ theo giờ, danh sách vé đã nhập).
-- **API:** `POST /tickets`, `POST /tickets/bulk`, `GET /tickets`, `DELETE /tickets/{id}`, `GET /tickets/reconciliation?date=`.
+- **Hai cách xem:** **Theo ngày (nhiều ngày)** — chọn khoảng ngày, mỗi ngày so lượt vào với tổng vé ngày đó (`reconciliation_range`; ngày nhập theo giờ thì chỉ so các giờ đã nhập), KPI tổng, biểu đồ cột + đường tỷ lệ, bảng, tải Excel; **Theo giờ trong 1 ngày** — như cũ.
+- **Tệp:** `backend/routers/tickets.py` (`TicketCount`, `reconciliation`, `reconciliation_range`), `frontend/views/doi_chieu_ve.py` (chọn Cả ngày / Từng giờ, khung giờ theo giờ mở cửa và cho biết khung đã nhập, tải mẫu Excel / CSV `template_df`, `to_xlsx`, tải tệp lên bỏ dòng trống, biểu đồ theo giờ, danh sách vé đã nhập).
+- **API:** `POST /tickets`, `POST /tickets/bulk`, `GET /tickets`, `DELETE /tickets/{id}`, `GET /tickets/reconciliation?date=`, `GET /tickets/reconciliation_range?date_from=&date_to=`.
 - **Test:** `test_ticket_reconciliation`.
 
 ### 5.18 Ngưỡng và giờ hoạt động (M7 · F6.2)
@@ -547,7 +560,7 @@ Quyền: **cam** = header `X-API-Key` (chỉ khi máy chủ đặt `SMARTCAU_API
 | GET /stats/demographics | demographics.py | — | co_cau_khach.py |
 | POST /region_stats · GET /stats/region | demographics.py | cam / — | camera cũ |
 | POST /tickets · /tickets/bulk · DELETE /tickets/{id} | tickets.py | staff | doi_chieu_ve.py |
-| GET /tickets · /tickets/reconciliation | tickets.py | — | doi_chieu_ve.py, reports.py |
+| GET /tickets · /tickets/reconciliation · /tickets/reconciliation_range | tickets.py | — | doi_chieu_ve.py, reports.py |
 | GET /reports/summary · /reports/heatmap · /reports/daily · /reports/daily/{d}/pdf · /reports/weekly/pdf | reports.py | — | bao_cao.py |
 | POST /reports/daily/{d}/send · /reports/weekly/send | reports.py | manager | bao_cao.py |
 | GET /insights/live · /insights/summary | insights.py | — | tong_quan.py, bao_cao.py, messages.py, display.py |
@@ -601,7 +614,8 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 | `[LỖI NHẬN DIỆN] Không nạp được DeepFace` / thanh dưới "Nhận diện: LỖI DeepFace" | DeepFace / TensorFlow / Keras chưa đúng | `ai_engine/age_gender_estimator.py::_load_deepface`; README mục DeepFace |
 | Không hiện Nam/Nữ, chỉ "ID n" | Chạy `--no-demographics`, hoặc DeepFace lỗi | `camera_bridge.py::parse_args`, `main` (khối `ai_status`) |
 | Dưới khung người mãi "Đang nhận diện…" / "Lại gần camera hơn" / "Chờ nhìn thẳng" / "Hình bị nhòe" | Mặt nhỏ, nghiêng, nhòe | `visitor_profiler.py::face_quality` (`MIN_EYE_PX`, `MIN_SHARPNESS`), cờ `--no-face-gate` |
-| Giới tính / tuổi sai nhiều | Mô hình, ánh sáng | `demographics_engine.py` (ngưỡng phiếu), `age_gender_estimator.py`, `docs/AI_CAI_THIEN.md`, `tools/eval_demographics.py` |
+| Giới tính / tuổi sai nhiều | Mô hình, ánh sáng, mặt nhỏ | `age_gender_estimator.py::align_face_from_keypoints`, `estimate_from_aligned_face` (`TTA_BELOW`), `demographics_engine.py` (`CONFIDENCE_THRESHOLD`, `MIN_VOTES_BEFORE_READY`, trọng số phiếu), `docs/AI_CAI_THIEN.md`, `tools/eval_demographics.py` |
+| Nhận diện chậm (`mặt xx ms` cao) | Máy yếu, đang ước lượng nguồn khách | `--no-origin`; `demographics_engine.RACE_VOTES`; `visitor_profiler.ready_interval` |
 | Nguồn khách sai | Ước lượng thô từ chủng tộc | `visitor_profiler.py::REGION_TO_ORIGIN`, `ORIGIN_MIN_SHARE`, `region_mapping.py` |
 | Camera giật / chậm, `AI xx ms/khung` cao | Máy yếu | `--imgsz 480`, `--max-width`, `--no-origin`; `camera_bridge.py` vòng lặp; `camera_ui.py::TextLayer.render` |
 | Hình trễ so với thực tế | Bộ đệm webcam | `camera_backend.py::LatestFrameReader` |
@@ -638,7 +652,9 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 | Hộp đỏ "Không kết nối được máy chủ" | `common._call` / `safe_get`; backend chưa chạy hoặc sai `SMARTCAU_API` |
 | `use_container_width` deprecated | Dùng `width="stretch"` |
 | Lỗi trên một trang cụ thể | Tệp `frontend/views/<trang>.py` (bảng mục 5.19), API ở mục 7 |
-| Tải PDF lỗi / PDF mất dấu | `backend/report_export.py::to_pdf`, `FONT_REGULAR`, `SMARTCAU_FONT` |
+| Tải PDF lỗi / PDF mất dấu / sai font | `backend/report_export.py::to_pdf`, `FONT_SETS`, biến `SMARTCAU_FONT` (+ `SMARTCAU_FONT_BOLD`) |
+| PDF thiếu biểu đồ | Chưa cài `matplotlib`, hoặc tắt "Kèm biểu đồ" — `report_export.chart_*` |
+| Sai tên cơ quan / địa danh trên PDF | Ô "Cơ quan chủ quản / Đơn vị" ở trang Báo cáo, hoặc `SMARTCAU_ORG_PARENT`, `SMARTCAU_ORG_NAME`, `SMARTCAU_ORG_PLACE` |
 | Đối chiếu vé: tệp tải lên báo sai định dạng | `frontend/views/doi_chieu_ve.py` (cột `date`, `hour`, `ticket_count`) |
 | Google Sheets lỗi 403 / SERVICE_DISABLED | Chưa chia sẻ Sheet cho email service account / chưa bật API — `dong_bo_sheets.py`, `tools/google_sheets_sync.py` |
 
@@ -696,7 +712,7 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 
 ## 11. Kiểm thử
 
-Chạy: `pytest -q` (66 test). `tests/test_api.py` dùng CSDL trong bộ nhớ và thay `notify.deliver*` bằng hàm ghi vào danh sách `SENT` / `DOCS` (không gửi Telegram thật).
+Chạy: `pytest -q` (71 test). `tests/test_api.py` dùng CSDL trong bộ nhớ và thay `notify.deliver*` bằng hàm ghi vào danh sách `SENT` / `DOCS` (không gửi Telegram thật).
 
 | Tệp test | Kiểm tra |
 |---|---|
@@ -706,3 +722,4 @@ Chạy: `pytest -q` (66 test). `tests/test_api.py` dùng CSDL trong bộ nhớ v
 | `tests/test_group_facade.py` | Đoàn khách, lượt mặt tiền |
 | `tests/test_visitor_profiler.py` | Lưu hồ sơ khi vào cầu, "Không xác định" sau 5 giây, nhãn hiển thị, cổng chất lượng mặt |
 | `tests/test_eval_tools.py` | Công cụ đo độ chính xác |
+| `tests/test_face_align.py` | Cắt mặt theo keypoint, bỏ bước tìm mặt, lật ảnh khi chưa chắc, trọng số phiếu, dừng ước lượng chủng tộc khi đủ |
