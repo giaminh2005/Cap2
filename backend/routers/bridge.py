@@ -82,12 +82,14 @@ class CameraStatus(Base):
     line = Column(String, default="")
     sends_alerts = Column(Integer, default=0)
     demographics = Column(Integer, default=0)
+    machine = Column(String, default="")        # ten may tinh dang chay camera nay
     last_seen = Column(DateTime, default=datetime.utcnow)
     started_at = Column(DateTime, default=datetime.utcnow)
 
 
 class HeartbeatIn(BaseModel):
     camera_id: int
+    machine: str = ""
     source: str = ""
     fps: float = 0
     line: str = ""
@@ -177,6 +179,7 @@ def heartbeat(hb: HeartbeatIn, db: Session = Depends(get_db)):
         row.started_at = now
     row.source, row.fps, row.line = hb.source, int(round(hb.fps)), hb.line
     row.sends_alerts, row.demographics, row.last_seen = int(hb.sends_alerts), int(hb.demographics), now
+    row.machine = hb.machine[:60]
     db.commit()
     return {"ok": True}
 
@@ -193,12 +196,13 @@ def cameras(db: Session = Depends(get_db)):
         r = rows.get(cid)
         if r is None:
             out.append({"camera_id": cid, "online": False, "last_seen": None, "source": "", "fps": 0,
-                        "line": "", "sends_alerts": False, "demographics": False, "started_at": None})
+                        "line": "", "sends_alerts": False, "demographics": False, "started_at": None, "machine": ""})
             continue
         out.append({"camera_id": cid, "online": (now - r.last_seen).total_seconds() <= OFFLINE_AFTER_SEC,
                     "last_seen": iso(r.last_seen), "seconds_ago": int((now - r.last_seen).total_seconds()),
                     "source": r.source, "fps": r.fps, "line": r.line, "sends_alerts": bool(r.sends_alerts),
-                    "demographics": bool(r.demographics), "started_at": iso(r.started_at)})
+                    "demographics": bool(r.demographics), "started_at": iso(r.started_at),
+                    "machine": r.machine or ""})
     return out
 
 

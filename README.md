@@ -83,6 +83,10 @@ Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có t
 - Không có camera: `python tools/simulate_bridge.py --random 200` để giả lập lượt qua cầu.
 - **Nhận tin Telegram:** đặt biến `TELEGRAM_BOT_TOKEN` trên máy chạy backend, thêm chat_id ở trang **Người nhận cảnh báo**.
 
+## Chạy trên nhiều máy
+
+Một máy làm **máy chủ** (`uvicorn backend.main:app --host 0.0.0.0 --port 8000`), mỗi máy camera chạy `camera_bridge.py ... --api http://<IP-máy-chủ>:8000`, các máy khác chỉ cần trình duyệt mở `http://<IP-máy-chủ>:8501` (web) hoặc `:8000/led/` (bảng LED). Kiểm tra kết nối: `python tools/kiem_tra_mang.py`. Hướng dẫn đầy đủ, mở tường lửa và kịch bản demo: [docs/TRIEN_KHAI_NHIEU_MAY.md](docs/TRIEN_KHAI_NHIEU_MAY.md).
+
 ## Quy tắc đếm và cảnh báo
 
 - Khách qua vạch về phía cầu ở camera k: `num_k += 1`, `dem += 1`. Qua vạch ra ngoài: `num_k -= 1`.

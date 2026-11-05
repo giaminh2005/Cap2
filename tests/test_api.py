@@ -193,9 +193,11 @@ def test_bridge_stats_grouping():
 
 
 def test_camera_heartbeat():
-    client.post("/bridge/heartbeat", json={"camera_id": 1, "source": "0", "fps": 14.6, "sends_alerts": True})
+    client.post("/bridge/heartbeat", json={"camera_id": 1, "source": "0", "fps": 14.6, "sends_alerts": True,
+                                           "machine": "LAPTOP-HOAN"})
     cams = {c["camera_id"]: c for c in client.get("/bridge/cameras").json()}
     assert cams[1]["online"] and cams[1]["fps"] == 15 and cams[2]["online"] is False
+    assert cams[1]["machine"] == "LAPTOP-HOAN" and cams[2]["machine"] == ""
 
 
 def test_facade_and_current_stats():
