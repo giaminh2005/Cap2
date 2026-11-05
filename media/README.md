@@ -1,6 +1,6 @@
 # media/ — Tệp gốc của nhóm
 
-Lưu nguyên bản các tệp nhóm gửi (không chỉnh sửa). Bản đã xử lý để chạy trên giao diện (tách nền xanh, nén nhẹ) sẽ nằm ở `frontend/assets/`.
+Lưu nguyên bản các tệp nhóm gửi (không chỉnh sửa). Bản đã xử lý để chạy trên bảng LED (tách nền xanh thành WebM trong suốt, cắt dấu ✦, nén 720p) nằm ở `backend/led_display/media/`.
 
 ## mascot/ — Chú khỉ áo dài xanh cầm quạt (phông xanh, 1920×1080, 24 fps, ~10 giây, có tiếng)
 
@@ -14,14 +14,18 @@ Lưu nguyên bản các tệp nhóm gửi (không chỉnh sửa). Bản đã x�
 
 ## phong_nen/ — Nền động chạy lặp (1920×1080, 24 fps, ~10 giây, có tiếng)
 
-| Tệp | Cảnh | Ghi chú |
-|---|---|---|
-| `1_pho_co_ban_ngay.mp4` | Phố cổ Hội An ban ngày, đèn lồng | |
-| `2_cau_rong_da_nang_dem.mp4` | Cầu Rồng, Đà Nẵng, ban đêm | Không phải Hội An — cân nhắc trước khi dùng |
-| `3_song_hoai_hoa_dang_dem.mp4` | Sông Hoài, hoa đăng, ban đêm | |
-| `4_chua_cau.mp4` | Chùa Cầu bên mặt nước | Nền chính |
+Đánh số theo hướng dẫn sử dụng bảng LED:
 
-Cả mascot và phông nền đều có dấu "✦" nhỏ ở góc dưới bên phải (dấu của công cụ tạo video) — khi xử lý sẽ cắt bỏ.
+| Tệp | Cảnh | Khung giờ | Vai trò |
+|---|---|---|---|
+| `1_pho_co_ban_ngay.mp4` | Phố cổ Hội An, đèn lồng | Ngày | Cảnh chính ban ngày |
+| `2_song_hoai_hoa_dang_dem.mp4` | Sông Hoài, hoa đăng | Đêm | Xen kẽ ban đêm |
+| `3_cau_rong_da_nang_dem.mp4` | Cầu Rồng, Đà Nẵng | Đêm | Cảnh chính ban đêm |
+| `4_chua_cau.mp4` | Chùa Cầu bên mặt nước | Ngày | Xen kẽ ban ngày |
+
+Ở mức Đỏ, cả 4 cảnh chạy thành tour tham quan ảo, mỗi cảnh 30 giây.
+
+Cả mascot và phông nền đều có dấu "✦" nhỏ ở góc dưới bên phải (dấu của công cụ tạo video); bản đã xử lý đã cắt bỏ.
 
 ## tai_lieu/ — Tài liệu dự án
 

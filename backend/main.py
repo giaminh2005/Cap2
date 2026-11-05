@@ -25,11 +25,14 @@ LUU Y: database o backend/smartcau.db (tu tao). Lan dau chay tu tao tai
 khoan admin / admin123. Cot moi trong cac bang cu duoc tu bo sung khi khoi dong.
 """
 
+import os
+
 from fastapi import FastAPI
+from fastapi.staticfiles import StaticFiles
 
 from . import daily_report, models  # noqa: F401  (dang ky cac bang voi Base)
 from .database import SessionLocal, ensure_schema
-from .routers import accounts, admin, alerts, bridge, counting, demographics, insights, reports, tickets
+from .routers import accounts, admin, alerts, bridge, counting, demographics, display, insights, reports, tickets
 from .security import ADMIN_API_KEY, API_KEY
 from .timeutil import UTC_OFFSET_HOURS
 
@@ -40,8 +43,12 @@ app = FastAPI(
 )
 
 for r in (counting.router, bridge.router, alerts.router, demographics.router,
-          tickets.router, reports.router, admin.router, accounts.router, insights.router):
+          tickets.router, reports.router, admin.router, accounts.router, insights.router, display.router):
     app.include_router(r)
+
+# Trang bang LED toan man hinh (mascot + phong nen): http://<may-chu>:8000/led/
+app.mount("/led", StaticFiles(directory=os.path.join(os.path.dirname(os.path.abspath(__file__)), "led_display"),
+                              html=True), name="led")
 
 # Tao bang + bo sung cot moi SAU khi da import moi router.
 ensure_schema()
