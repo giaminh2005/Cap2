@@ -28,8 +28,8 @@ from backend.main import app  # noqa: E402
 
 client = TestClient(app)
 SENT = []
-notify.deliver_async = lambda recipients, text: SENT.append(text)   # khong gui Telegram that
-notify.deliver = lambda recipients, text: [{"name": "x", "channel": "telegram", "status": "ok"}] if SENT.append(text) is None else []
+notify.deliver_async = lambda recipients, text, buttons=None: SENT.append(text)   # khong gui Telegram that
+notify.deliver = lambda recipients, text, buttons=None: [{"name": "x", "channel": "telegram", "status": "ok"}] if SENT.append(text) is None else []
 DOCS = []
 notify.deliver_document = lambda recipients, fn, content, caption="": DOCS.append((fn, content)) or [
     {"name": "x", "channel": "telegram", "status": "ok"}]
@@ -402,3 +402,71 @@ def test_display_state_and_led_page():
     assert v.status_code == 200 and len(v.content) > 10000
     for n in (1, 2, 3, 4):
         assert client.get(f"/led/media/scene{n}.webm").status_code == 200
+
+
+# ------------------------------------------------------------------ tin nhan Telegram + bot
+def test_rich_telegram_messages_include_live_status():
+    from backend import messages
+    from backend.database import SessionLocal
+    SENT.clear()
+    client.post("/bridge/reset", headers=ADMIN)
+    for _ in range(3):
+        client.post("/bridge/crossing", json={"camera_id": 1, "direction": "in"})
+    client.post("/occupancy", json={"count": 3, "status": "WARNING"})
+    client.post("/system_events", json={"event_type": "WARNING", "count": 16, "camera_id": 1})
+    txt = SENT[-1]
+    assert "CẢNH BÁO VÀNG" in txt and "<b>" in txt and "Chân cầu 1: <b>3</b>" in txt and "Cam 1" in txt
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 22, "camera_id": 1})
+    assert "CẢNH BÁO ĐỎ" in SENT[-1] and "Sự cố #" in SENT[-1]
+    client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 25, "camera_id": 1})
+    assert "NHẮC LẠI" in SENT[-1] and "cao nhất 25" in SENT[-1]
+    client.post("/system_events", json={"event_type": "CRITICAL_CLEARED", "count": 10, "camera_id": 1})
+    assert "ĐÃ ĐÓNG" in SENT[-1] and "Cao nhất <b>25</b>" in SENT[-1]
+    with SessionLocal() as db:
+        assert "TÌNH HÌNH CHÙA CẦU" in messages.status_message(db)
+        assert "HÔM NAY" in messages.today_message(db)
+        assert "CHÀO BUỔI SÁNG" in messages.morning_message(db)
+    assert messages.bar(25, 20).count("🟥") == 10 and messages.bar(0, 20) == "⬜" * 10
+
+
+def test_telegram_bot_commands_and_ack_button():
+    from backend import telegram_bot
+    out, answers = [], []
+    send = lambda cid, text, btn=None: out.append((cid, text, btn))   # noqa: E731
+    answer = lambda qid, text: answers.append(text)                    # noqa: E731
+    chat = {"id": 555, "first_name": "Khánh", "type": "private"}
+    # chat la: chi nhan chat_id, khong xem duoc so lieu
+    assert telegram_bot.handle_update({"message": {"chat": chat, "text": "/tinhhinh"}}, send, answer) == "unknown-chat"
+    assert "555" in out[-1][1] and "TÌNH HÌNH" not in out[-1][1]
+    assert telegram_bot.SEEN["555"]["name"] == "Khánh"
+    client.post("/recipients", headers=ADMIN, json={"name": "Khánh", "channel": "telegram", "address": "555"})
+    assert telegram_bot.handle_update({"message": {"chat": chat, "text": "/tinhhinh@smartcau_bot"}}, send, answer) == "status"
+    assert "TÌNH HÌNH CHÙA CẦU" in out[-1][1] and out[-1][2]
+    assert telegram_bot.handle_update({"message": {"chat": chat, "text": "/homnay"}}, send, answer) == "today"
+    # nut "Da xu ly" duoi tin canh bao Do
+    inc_id = client.post("/system_events", json={"event_type": "CRITICAL_ALERT", "count": 23}).json()["incident_id"]
+    cq = {"callback_query": {"id": "q1", "data": f"ack:{inc_id}", "from": {"first_name": "Khánh"},
+                             "message": {"chat": chat}}}
+    SENT.clear()
+    assert telegram_bot.handle_update(cq, send, answer) == "ack"
+    inc = next(i for i in client.get("/incidents").json() if i["id"] == inc_id)
+    assert inc["acknowledged"] and inc["acked_by"] == "Khánh"
+    assert any("đã nhận xử lý" in t for t in SENT)
+    assert telegram_bot.handle_update(cq, send, answer) == "ack-dup"
+    client.post("/system_events", json={"event_type": "CRITICAL_CLEARED", "count": 5})
+
+
+def test_morning_brief_and_ticket_reminder_once_per_day():
+    from backend import daily_report
+    from backend.database import SessionLocal
+    from backend.timeutil import local_now
+    client.put("/config", headers=ADMIN, json={"open_time": "07:00", "close_time": "21:30"})
+    day = local_now().replace(hour=0, minute=0, second=0, microsecond=0) + timedelta(days=30)
+    SENT.clear()
+    with SessionLocal() as db:
+        assert "morning" in daily_report.run_due(db, day.replace(hour=7, minute=5))
+        assert "morning" not in daily_report.run_due(db, day.replace(hour=7, minute=6))   # khong gui lap
+        assert "ticket-reminder" in daily_report.run_due(db, day.replace(hour=21, minute=5))
+        assert "ticket-reminder" not in daily_report.run_due(db, day.replace(hour=21, minute=10))
+    assert any("CHÀO BUỔI SÁNG" in t for t in SENT) and any("CUỐNG VÉ" in t for t in SENT)
+    client.put("/config", headers=ADMIN, json={"open_time": "00:00", "close_time": "23:59"})

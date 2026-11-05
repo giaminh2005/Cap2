@@ -76,6 +76,8 @@ Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có t
 | 3 | `python ai_engine/camera_bridge.py --camera-id 1 --source 0` | camera chân cầu 1 (gửi cảnh báo) |
 | 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1` | camera chân cầu 2 |
 
+Bot Telegram trả lời `/tinhhinh`, `/homnay`, `/suco` và có nút **✅ Đã xử lý** ngay dưới tin cảnh báo Đỏ; mỗi tin kèm tình hình hiện tại. Xem `docs/GHI_CHU_GIAO_DIEN.md`, mục "Tin nhắn Telegram và tự động hóa".
+
 Nhận diện giới tính / tuổi / nguồn khách bật sẵn; thêm `--no-demographics` nếu chỉ cần đếm. Các ghi chú, hướng dẫn và mã yêu cầu (FR, BRULE, KPI) đã gỡ khỏi giao diện web được lưu ở `docs/GHI_CHU_GIAO_DIEN.md`.
 
 - **Đăng nhập lần đầu:** `admin` / `admin123`, hệ thống bắt đổi mật khẩu. Tạo thêm tài khoản Quản lý, Người trực ở trang **Tài khoản**.
