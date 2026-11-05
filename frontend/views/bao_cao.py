@@ -12,7 +12,7 @@ import streamlit as st
 
 from backend.report_export import report_tables, to_excel, to_pdf
 from common import (C, HAS_PLOTLY, ApiError, insight_list, api_get_bytes, api_post, empty, fmt_duration, fmt_int, fmt_pct,
-                    fmt_time, has_role, kpi, kpi_row, local_today, note, page_header, safe_get, section, style_fig)
+                    fmt_time, has_role, kpi, kpi_row, local_today, page_header, safe_get, section, style_fig)
 
 if HAS_PLOTLY:
     import plotly.graph_objects as go
@@ -57,20 +57,18 @@ if ins:
     with st.expander("Nhận định tự động hôm nay", expanded=True):
         insight_list(ins["items"])
 
-section("Chỉ số an toàn", "theo bộ KPI Sprint 0")
+section("Chỉ số an toàn")
 k = r["kpis"]
 o4, o5 = k["o4_handled_within_3min_pct"], k["o5_false_alarm_pct"]
 kpi_row([
-    kpi("O1 · Phút vượt sức chứa", f"{fmt_int(k['o1_minutes_over'])}<small> phút</small>",
+    kpi("Phút vượt sức chứa", f"{fmt_int(k['o1_minutes_over'])}<small> phút</small>",
         f"{k['o1_minutes_per_day']} phút/ngày có hơn {k['capacity']} người", "danger" if k["o1_minutes_over"] else "ok"),
-    kpi("O4 · Xử lý trong 3 phút", fmt_pct(o4), f"{k['o4_real_incidents']} sự cố thật · mục tiêu ≥ 90%",
+    kpi("Xử lý trong 3 phút", fmt_pct(o4), f"{k['o4_real_incidents']} sự cố thật · mục tiêu ≥ 90%",
         "" if o4 is None else "ok" if o4 >= 90 else "warn"),
-    kpi("O5 · Cảnh báo sai", fmt_pct(o5), f"{k['o5_false_alarms']} sự cố báo sai · mục tiêu ≤ 5%",
+    kpi("Cảnh báo sai", fmt_pct(o5), f"{k['o5_false_alarms']} sự cố báo sai · mục tiêu ≤ 5%",
         "" if o5 is None else "ok" if o5 <= 5 else "warn"),
-    kpi("O8 · Chênh lệch vé", fmt_pct(k["o8_gap_rate_pct"]), "lượt vào so với cuống vé", "info"),
+    kpi("Chênh lệch vé", fmt_pct(k["o8_gap_rate_pct"]), "lượt vào so với cuống vé", "info"),
 ])
-note("O1 tính số phút có ít nhất một lần đo vượt sức chứa. O4 và O5 tính trên sự cố cảnh báo Đỏ; "
-     "người trực đánh dấu báo sai ở trang Trực ca & sự cố. O8 chỉ tính những ngày đã nhập số cuống vé.")
 
 if HAS_PLOTLY:
     left, right = st.columns([2, 1], gap="large")
@@ -120,7 +118,6 @@ tables = report_tables(r)
 t1, t2 = st.columns(2, gap="large")
 t1.dataframe(tables["Tổng quan"].astype(str), hide_index=True, width="stretch", height=390)
 t2.dataframe(tables["Cơ cấu khách"].astype(str), hide_index=True, width="stretch", height=390)
-st.caption("Trong nước / nước ngoài là ước lượng của mô hình AI, không phải quốc tịch.")
 
 section("Báo cáo ngày tự động", "lập và gửi sau giờ đóng cửa")
 daily = safe_get("/reports/daily") or []

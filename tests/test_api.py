@@ -394,6 +394,10 @@ def test_display_state_and_led_page():
     page = client.get("/led/")
     assert page.status_code == 200 and "led.js" in page.text
     assert client.get("/led/led.js").status_code == 200
+    assert client.get("/led/hai-man-hinh.html").status_code == 200
+    for who in ("than", "khuyen"):
+        for clip in ("idle", "wave", "bow", "yellow", "red", "walk_on", "walk_off", "walk_loop"):
+            assert client.get(f"/led/media/{who}_{clip}.webm").status_code == 200, (who, clip)
     v = client.get("/led/media/than_idle.webm")
     assert v.status_code == 200 and len(v.content) > 10000
     for n in (1, 2, 3, 4):

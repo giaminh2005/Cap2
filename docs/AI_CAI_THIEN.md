@@ -30,9 +30,9 @@ Tài liệu này rà soát toàn bộ chuỗi xử lý AI, chỉ ra điểm yế
 
 | Máy | Lệnh camera |
 |---|---|
-| Laptop thường, không GPU | `--imgsz 640 --demographics` (mặc định) |
-| Laptop có GPU NVIDIA | `--model yolov8s-pose.pt --imgsz 960 --demographics --face-detector retinaface` |
-| Chỉ cần đếm, ưu tiên tốc độ | bỏ `--demographics` |
+| Laptop thường, không GPU | `--imgsz 640` (mặc định, nhận diện bật sẵn) |
+| Laptop có GPU NVIDIA | `--model yolov8s-pose.pt --imgsz 960 --face-detector retinaface` |
+| Chỉ cần đếm, ưu tiên tốc độ | thêm `--no-demographics` |
 
 ## 3. Bố trí camera (ảnh hưởng lớn nhất, không tốn tiền)
 

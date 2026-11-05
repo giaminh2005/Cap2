@@ -13,7 +13,7 @@ import sys
 
 import streamlit as st
 
-from common import API_BASE, alert_box, badge, note, page_header, section
+from common import API_BASE, alert_box, badge, page_header, section
 
 ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..")
 sys.path.insert(0, os.path.join(ROOT, "tools"))
@@ -48,16 +48,6 @@ def parse_sheet_id(text: str) -> str:
 
 sheet_id, creds, email = load_conf()
 
-with st.expander("Hướng dẫn tạo khóa Google (làm 1 lần, khoảng 10 phút)", expanded=not (sheet_id and email)):
-    st.markdown("""
-1. Vào **console.cloud.google.com**, đăng nhập bằng tài khoản Google của nhóm, bấm **Select a project → New project**, đặt tên (vd *SmartCau*) rồi **Create**.
-2. Mở menu **APIs & Services → Library**, tìm và bấm **Enable** cho 2 API: **Google Sheets API** và **Google Drive API**.
-3. Vào **APIs & Services → Credentials → Create credentials → Service account**, đặt tên (vd *smartcau-sync*) → **Done**.
-4. Bấm vào service account vừa tạo → thẻ **Keys → Add key → Create new key → JSON → Create**. Máy sẽ tải về 1 tệp `.json`, đây là **tệp khóa**.
-5. Tạo một Google Sheet mới (sheets.new), bấm **Share** và chia sẻ quyền **Editor** cho **email của service account** (dạng `...@....iam.gserviceaccount.com`, có trong tệp khóa và hiện ở bên dưới sau khi tải lên).
-6. Dán **đường link Google Sheet** và **tải tệp khóa** ở mục bên dưới, rồi bấm **Đồng bộ ngay**.
-""")
-
 section("Cấu hình")
 with st.form("gs"):
     link = st.text_input("Đường link hoặc ID của Google Sheet", value=sheet_id,
@@ -87,8 +77,6 @@ with st.form("gs"):
 if email:
     st.markdown(f"Email service account: `{email}`  " + badge("Nhớ chia sẻ Sheet cho email này, quyền Editor", "warn"),
                 unsafe_allow_html=True)
-note("Tệp khóa được lưu ở thư mục <code>config/</code> trên máy chạy giao diện và không được đưa lên GitHub. "
-     "Không gửi tệp này cho người ngoài nhóm.")
 
 section("Đồng bộ")
 if not (sheet_id and creds):

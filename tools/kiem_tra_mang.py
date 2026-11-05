@@ -70,10 +70,12 @@ def server_mode():
     ip = ips[0]
     print(f"""
 === DÙNG CHO CÁC MÁY KHÁC (cùng mạng) ===
-Máy camera chân cầu 1:  python ai_engine/camera_bridge.py --camera-id 1 --source 0 --demographics --api http://{ip}:8000
-Máy camera chân cầu 2:  python ai_engine/camera_bridge.py --camera-id 2 --source 0 --demographics --api http://{ip}:8000
+Máy camera chân cầu 1:  python ai_engine/camera_bridge.py --camera-id 1 --source 0 --api http://{ip}:8000
+Máy camera chân cầu 2:  python ai_engine/camera_bridge.py --camera-id 2 --source 0 --api http://{ip}:8000
 Máy xem web quản lý:    mở trình duyệt  http://{ip}:8501
-Máy bảng LED đầu cầu:   mở Chrome/Edge  http://{ip}:8000/led/   rồi nhấn F11
+Bảng LED đầu cầu 1:     mở Chrome/Edge  http://{ip}:8000/led/?dau=1   rồi nhấn F11
+Bảng LED đầu cầu 2:     mở Chrome/Edge  http://{ip}:8000/led/?dau=2
+Xem song song 2 LED:    http://{ip}:8000/led/hai-man-hinh.html
 Kiểm tra từ máy khác:   python tools/kiem_tra_mang.py http://{ip}:8000""")
     return 0
 
@@ -103,7 +105,7 @@ def client_mode(base):
         for c in cams:
             print(f"  Camera {c['camera_id']}: {'đang chạy trên máy ' + (c.get('machine') or '?') if c['online'] else 'chưa chạy'}")
         print(f"✓ Web quản lý: {'mở được' if port_open(host, 8501) else 'CHƯA mở'} tại http://{host}:8501")
-        print(f"✓ Bảng LED: http://{host}:{port}/led/")
+        print(f"✓ Bảng LED: http://{host}:{port}/led/?dau=1 và ?dau=2 (song song: /led/hai-man-hinh.html)")
         return 0
     except (urllib.error.URLError, OSError, ValueError, KeyError) as e:
         print(f"✗ Cổng mở nhưng không phải backend SmartCau hoặc bị lỗi: {e}")

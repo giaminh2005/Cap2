@@ -5,7 +5,7 @@ Phu trach: KHANH.
 
 import streamlit as st
 
-from common import section, ApiError, api_post, fmt_int, fmt_time, has_role, kpi, kpi_row, note, page_header, safe_get
+from common import section, ApiError, api_post, fmt_int, fmt_time, has_role, kpi, kpi_row, page_header, safe_get
 
 page_header("Hệ thống · Dữ liệu cá nhân", "Quyền riêng tư", "Cam kết xử lý dữ liệu theo Nghị định 13/2023/NĐ-CP và Luật Bảo vệ dữ liệu cá nhân 2025.")
 
@@ -23,10 +23,10 @@ st.markdown("""
 #### Hệ thống làm gì với hình ảnh
 - Khung hình camera chỉ được xử lý **trong bộ nhớ**, không ghi ra ổ đĩa, không gửi lên máy chủ.
 - **Không lưu** ảnh, video hay đặc trưng khuôn mặt. Máy chủ chỉ nhận số đếm và nhãn ước lượng
-  (giới tính, nhóm tuổi, trong nước / nước ngoài) của từng lượt vào, không kèm tên hay ảnh.
-- Kết quả có độ tin cậy dưới 70% được ghi là **“Không xác định”** và không đưa vào tỷ lệ (BRULE-06).
-- “Trong nước / nước ngoài” chỉ là **ước lượng thô** từ nhóm khu vực rộng, không phải quốc tịch.
-- Số liệu và nhật ký sự cố được lưu tối thiểu **24 tháng** (BRULE-09).
+  (giới tính, nhóm tuổi, trong nước/châu Á hoặc quốc tế) của từng lượt vào, không kèm tên hay ảnh.
+- Kết quả có độ tin cậy dưới 70% được ghi là **“Không xác định”** và không đưa vào tỷ lệ.
+- “Trong nước/châu Á” và “Quốc tế” chỉ là **ước lượng thô** từ nhóm khu vực rộng, không phải quốc tịch.
+- Số liệu và nhật ký sự cố được lưu tối thiểu **24 tháng**.
 """)
 
 section("Bảng thông báo song ngữ đặt tại hai đầu cầu")
@@ -56,4 +56,4 @@ if has_role("admin"):
                     st.success(f"Đã xóa {r['deleted_rows']} dòng dữ liệu cũ.")
                 except ApiError as e:
                     st.error(str(e))
-    note("Theo BRULE-09 phải giữ số liệu tổng hợp và nhật ký sự cố tối thiểu 24 tháng, nên chỉ xóa được dữ liệu cũ hơn 730 ngày.")
+    st.caption("Chỉ xóa được dữ liệu cũ hơn 730 ngày (giữ tối thiểu 24 tháng).")

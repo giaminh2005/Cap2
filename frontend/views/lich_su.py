@@ -19,7 +19,7 @@ with st.container(border=True):
     picked = c1.date_input("Khoảng thời gian", value=(today - timedelta(days=6), today), format="DD/MM/YYYY")
     gender = c2.selectbox("Giới tính", ["Tất cả", "Nữ", "Nam", "Không xác định"])
     age = c3.selectbox("Nhóm tuổi", ["Tất cả"] + AGE_ORDER)
-    origin = c4.selectbox("Nguồn khách", ["Tất cả", "Trong nước", "Nước ngoài"])
+    origin = c4.selectbox("Nguồn khách", ["Tất cả", "Trong nước/châu Á", "Quốc tế"])
     limit = c5.number_input("Số dòng tối đa", 50, 20000, 1000, step=50)
 
 if not isinstance(picked, (tuple, list)) or len(picked) != 2:
@@ -32,7 +32,7 @@ if gender != "Tất cả":
 if age != "Tất cả":
     params["age_range"] = age
 if origin != "Tất cả":
-    params["origin"] = {"Trong nước": "Trong nuoc", "Nước ngoài": "Nuoc ngoai"}[origin]
+    params["origin"] = {"Trong nước/châu Á": "Trong nuoc", "Quốc tế": "Nuoc ngoai"}[origin]
 
 rows = safe_get("/visit_events", params)
 if rows is None:
@@ -55,7 +55,7 @@ kpi_row([
     kpi("Số lượt hiển thị", fmt_int(len(df)), "theo bộ lọc", "primary"),
     kpi("Nữ", fmt_int((df["Giới tính"] == "Nữ").sum()), "", "info"),
     kpi("Nam", fmt_int((df["Giới tính"] == "Nam").sum()), "", "info"),
-    kpi("Nước ngoài", fmt_int((df["Nguồn khách"] == "Nước ngoài").sum()), "ước lượng", "warn"),
+    kpi("Quốc tế", fmt_int((df["Nguồn khách"] == "Quốc tế").sum()), "ước lượng", "warn"),
 ])
 st.dataframe(df, width="stretch", hide_index=True, height=480)
 st.download_button("Xuất CSV", data=df.to_csv(index=False).encode("utf-8-sig"),

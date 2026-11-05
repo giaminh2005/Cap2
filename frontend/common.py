@@ -53,7 +53,7 @@ SERIES = [C["oxblood"], C["gold"], C["teal"], C["wood"], "#8C7B6A", "#C4A77D"]
 
 # ------------------------------------------------------------ nhan tieng Viet
 GENDER_VI = {"Man": "Nam", "Woman": "Nữ", None: "Không xác định"}
-ORIGIN_VI = {"Trong nuoc": "Trong nước", "Nuoc ngoai": "Nước ngoài", None: "Chưa rõ"}
+ORIGIN_VI = {"Trong nuoc": "Trong nước/châu Á", "Nuoc ngoai": "Quốc tế", None: "Chưa rõ"}
 AGE_ORDER = ["0-5", "6-12", "13-17", "18-24", "25-34", "35-44", "45-54", "55-64", "65-69", "70+"]
 ROLE_VI = {"admin": "Quản trị viên", "quan_ly": "Quản lý", "nguoi_truc": "Người trực"}
 STATUS_META = {
@@ -416,8 +416,7 @@ def login_page():
                     '<div class="sc-sub">Dành cho người trực, cán bộ quản lý và quản trị viên.</div>'
                     '<div class="sc-rule" style="margin-bottom:22px"><span></span></div>', unsafe_allow_html=True)
         if not api_is_up():
-            alert_box("Chưa kết nối được máy chủ. Hãy chạy backend trước: "
-                      "<code>uvicorn backend.main:app --reload --port 8000</code>", "warn")
+            alert_box("Chưa kết nối được máy chủ.", "warn")
         st.markdown("<style>div[data-testid='stForm']{background:transparent !important;border:none !important;padding:0 !important}"
                     "[data-baseweb='input']{height:46px}</style>", unsafe_allow_html=True)
         with st.form("login", border=False):
@@ -441,7 +440,6 @@ def login_page():
                     st.error(r.json().get("detail", "Đăng nhập thất bại."))
                 except ValueError:
                     st.error("Đăng nhập thất bại.")
-        st.caption("Lần đầu sử dụng: tài khoản admin, mật khẩu admin123. Hệ thống sẽ yêu cầu đổi mật khẩu.")
 
 
 def change_password_form(forced=False):

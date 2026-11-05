@@ -9,15 +9,12 @@ import pandas as pd
 import streamlit as st
 
 from common import (COLORS, HAS_PLOTLY, ApiError, api_delete, api_post, fmt_int, fmt_time, kpi, kpi_row,
-                    local_today, note, page_header, safe_get, style_fig)
+                    local_today, page_header, safe_get, style_fig)
 
 if HAS_PLOTLY:
     import plotly.graph_objects as go
 
 page_header("Vận hành · Bộ phận soát vé", "Đối chiếu vé", "So sánh số cuống vé thu tại Chùa Cầu với lượt vào lòng cầu do camera đếm.")
-note("Theo BRULE-08: chỉ so <b>lượt vào lòng cầu</b> (2 camera chân cầu), không dùng lượt qua mặt tiền. "
-     "Kết quả chỉ dùng để điều phối lực lượng soát vé, <b>không dùng làm bằng chứng xử phạt</b>. "
-     "Tỷ lệ chênh lệch = (lượt vào − số vé) / lượt vào × 100%.")
 
 day = st.date_input("Ngày đối chiếu", value=local_today(), format="DD/MM/YYYY")
 day_s = day.isoformat()
@@ -40,8 +37,8 @@ with left, st.container(border=True):
 
 with right, st.container(border=True):
     st.markdown('<div class="sc-eyebrow" style="margin-bottom:6px">Nhập từ tệp CSV / Excel</div>', unsafe_allow_html=True)
-    st.caption("Các cột: `date` (YYYY-MM-DD), `hour` (để trống = cả ngày), `ticket_count`.")
-    up = st.file_uploader("Chọn tệp", type=["csv", "xlsx"], label_visibility="collapsed")
+    up = st.file_uploader("Chọn tệp", type=["csv", "xlsx"], label_visibility="collapsed",
+                          help="Các cột: date (YYYY-MM-DD), hour (để trống = cả ngày), ticket_count")
     if up is not None:
         try:
             df_up = pd.read_csv(up) if up.name.endswith(".csv") else pd.read_excel(up)

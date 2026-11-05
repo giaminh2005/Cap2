@@ -2,15 +2,21 @@
 
 Lưu nguyên bản các tệp nhóm gửi (không chỉnh sửa). Bản đã xử lý để chạy trên bảng LED (tách nền xanh thành WebM trong suốt, cắt dấu ✦, nén 720p) nằm ở `backend/led_display/media/`.
 
-## mascot/ — Chú khỉ áo dài xanh cầm quạt (phông xanh, 1920×1080, 24 fps, ~10 giây, có tiếng)
+## mascot/ — 2 nhân vật, mỗi nhân vật 8 clip (phông xanh, 1920×1080, 24 fps, ~10 giây, có tiếng)
 
-| Tệp | Hành động | Dự kiến dùng |
+- `linh_than/` — Linh Thân, chú khỉ áo dài xanh cầm quạt.
+- `linh_khuyen/` — Linh Khuyển, chú chó áo đỏ khăn hồng cầm quạt.
+
+| Tệp (giống nhau ở 2 thư mục) | Hành động | Dùng trên bảng LED |
 |---|---|---|
-| `1_idle_dung_yen.mp4` | Đứng yên, chớp mắt | Trạng thái Bình thường (chạy lặp) |
-| `2_wave_vay_chao.mp4` | Mở quạt, vẫy tay | Chào khách |
-| `3_bow_chap_tay_cam_on.mp4` | Chắp tay cúi chào | Cảm ơn / đóng cửa |
-| `4_yellow_canh_bao_vang.mp4` | Phe phẩy quạt, giơ tay | Cảnh báo Vàng — cầu sắp đầy |
-| `5_red_canh_bao_do.mp4` | Giơ tay ra hiệu dừng | Cảnh báo Đỏ — cầu đang đầy |
+| `1_idle_dung_yen.mp4` | Đứng yên | Đứng chờ (chạy lặp) |
+| `2_wave_vay_chao.mp4` | Mở quạt, vẫy tay | Chào khách, khởi động, khách mới |
+| `3_bow_…mp4` | Cúi chào | Xanh ổn định, cảm ơn khi Đỏ hạ xuống |
+| `4_yellow_canh_bao_vang.mp4` | Phe phẩy quạt, ra hiệu đi chậm | Mức Vàng |
+| `5_red_canh_bao_do.mp4` | Giơ tay ra hiệu dừng | Mức Đỏ |
+| `6_walk_off_vay_roi_di_ra.mp4` | Vẫy tay rồi đi ra bên phải | Đổi nhân vật khi lên / hạ Đỏ |
+| `7_walk_on_di_vao.mp4` | Đi vào từ bên trái tới giữa | Khởi động, đổi nhân vật |
+| `8_walk_loop_di_tai_cho.mp4` | Đi tại chỗ, nhìn nghiêng | Chưa gán trạng thái (thử trong bảng debug) |
 
 ## phong_nen/ — Nền động chạy lặp (1920×1080, 24 fps, ~10 giây, có tiếng)
 

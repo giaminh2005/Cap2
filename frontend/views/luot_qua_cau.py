@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from common import (section, COLORS, HAS_PLOTLY, ApiError, api_post, fmt_int, has_role, kpi, kpi_row, local_today,
-                    note, page_header, safe_get, style_fig)
+                    page_header, safe_get, style_fig)
 
 if HAS_PLOTLY:
     import plotly.graph_objects as go
@@ -33,9 +33,6 @@ def live_state():
 
 
 live_state()
-note("Khách đi qua vạch về phía cầu: <b>num += 1, dem += 1</b>. Đi qua vạch ra ngoài: <b>num −= 1</b>. "
-     "Khi onbridge về 0 (hoặc âm do camera bỏ sót), hệ thống đặt lại num1 = num2 = 0. "
-     "<b>dem</b> tự về 0 lúc 0 giờ mỗi ngày.")
 
 if has_role("admin", "quan_ly"):
     with st.expander("Đặt lại số người trên cầu (khi đếm tay thấy lệch)"):

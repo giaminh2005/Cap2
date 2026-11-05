@@ -5,7 +5,7 @@ Phu trach: MINH.
 
 import streamlit as st
 
-from common import ROLE_VI, ApiError, api_post, api_put, badge, current_user, fmt_time, note, page_header, safe_get
+from common import ROLE_VI, ApiError, api_post, api_put, badge, current_user, fmt_time, page_header, safe_get
 
 page_header("Hệ thống · Phân quyền", "Tài khoản", "Tạo, khóa và phân quyền tài khoản theo ba vai trò.")
 
@@ -60,6 +60,3 @@ for u in safe_get("/users") or []:
                 except ApiError as e:
                     st.error(str(e))
 
-note("<b>Quản trị viên:</b> toàn quyền. <b>Quản lý:</b> xem vận hành, phân tích, báo cáo, camera. "
-     "<b>Người trực:</b> tổng quan, trực ca, bảng LED, lượt qua cầu, đối chiếu vé — không vào được trang cấu hình. "
-     "Mật khẩu được lưu dạng băm, khóa tài khoản sẽ đăng xuất người đó ngay.")
