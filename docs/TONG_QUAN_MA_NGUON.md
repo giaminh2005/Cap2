@@ -40,7 +40,7 @@ Các thay đổi lớn theo thời gian: PR #4–#5 (7 module, LED Linh Thân, n
 
 - **2 camera đặt ở 2 chân cầu** đếm người qua một vạch kẻ: đi vào cầu / đi ra khỏi cầu. Từ đó biết **số người đang trên cầu** (`onbridge`) và **tổng lượt vào trong ngày** (`dem`).
 - **Cảnh báo quá tải**: Vàng khi từ 75% sức chứa (mặc định 15/20 người); Đỏ khi vượt sức chứa (trên 20 người) liên tục 15 giây. Hết Đỏ khi số người ≤ ngưỡng Vàng liên tục 15 giây. Tin Đỏ nhắc lại tối đa 1 lần mỗi 3 phút.
-- **Ước lượng nhân khẩu học** khi khách vào cầu: Nam/Nữ, nhóm tuổi, nguồn khách "Trong nước/châu Á" hoặc "Quốc tế" (DeepFace). Không lưu ảnh khuôn mặt.
+- **Ước lượng nhân khẩu học** khi khách vào cầu: Nam/Nữ, nhóm tuổi, nguồn khách "Trong nước/châu Á" hoặc "Quốc tế" (mặc định dùng mô hình nhẹ, chính xác cao **InsightFace buffalo_s** qua ONNX Runtime, có DeepFace dự phòng). Không lưu ảnh khuôn mặt.
 - **Web quản lý** (Streamlit) theo vai trò: người trực, quản lý, quản trị viên.
 - **Bảng LED 2 đầu cầu** (trang HTML) với 2 mascot **Linh Thân** (khỉ) và **Linh Khuyển** (chó), phông nền động, câu thoại theo mức cảnh báo.
 - **Telegram**: tin cảnh báo kèm tình hình hiện tại, bot nhận lệnh, nút "Đã xử lý", báo cáo ngày / tuần tự động kèm PDF.
@@ -279,10 +279,13 @@ Mỗi chức năng ghi: **làm gì → quy tắc → tệp code → API → bả
 - **CSDL:** `incidents`, `system_events`.
 
 ### 5.6 Nhận diện giới tính, tuổi, nguồn khách (M1 · F3.2)
-- **Luồng:** `VisitorProfiler.observe` (mỗi 0,3 giây / người; đã chốt kết quả thì 1,5 giây) → `face_quality` (mắt đủ to ≥14 px, nhìn thẳng, không nhòe) → `AsyncEngine.update` (đẩy việc sang luồng `deepface`, đo `avg_ms`) → `DemographicsEngine.update`:
-  - **Đường nhanh (mặc định với model pose):** `age_gender_estimator.align_face_from_keypoints` dùng 2 mắt + mũi của YOLO-pose để xoay cho 2 mắt nằm ngang và cắt đúng khuôn mặt 224×224 (2 mắt ở 38% chiều cao, cách nhau 33% chiều rộng) → `estimate_from_aligned_face` gọi DeepFace với `detector_backend="skip"` (bỏ bước tìm mặt) → nếu giới tính < 85% chắc chắn thì phân tích thêm ảnh lật gương và lấy trung bình (`TTA_BELOW`).
+- **Luồng:** `VisitorProfiler.observe` (mỗi 0,3 giây / người; đã chốt kết quả thì 1,5 giây) → `face_quality` (mắt đủ to ≥18 px, nhìn thẳng, không nhòe ≥45) → `AsyncEngine.update` (đẩy việc sang luồng nền `deepface`, đo `avg_ms`) → `DemographicsEngine.update`:
+  - **Đường nhanh (mặc định với model pose):**
+    - Nếu dùng **InsightFace** (mặc định): `age_gender_estimator.align_face_for_insightface` cắt & xoay khuôn mặt chuẩn 96×96 (trường nhìn rộng hơn với `eye_span=0.26`, `eye_y=0.40`) → `_predict_genderage_insightface` suy luận qua ONNX Runtime (~4 ms/mặt, độ chính xác cao cho người Châu Á).
+    - Nếu dùng **DeepFace**: `align_face_from_keypoints` cắt 224×224 → `estimate_from_aligned_face` gọi DeepFace `skip`.
+    - Cả 2 đều hỗ trợ TTA (lật gương lấy trung bình khi độ tin cậy < 85%).
   - **Đường dự phòng** (model không có keypoint): `estimate_demographics_from_person_box` (DeepFace tự tìm mặt trong khung người).
-  - `TemporalVoter` bỏ phiếu nhiều khung (≥3 phiếu, tỷ lệ ≥70%). **Trọng số phiếu = (độ chắc − 50%) / 50%**: phiếu 55% gần như không tính, phiếu 99% tính gần đủ.
+  - `TemporalVoter` bỏ phiếu nhiều khung (≥4 phiếu, tỷ lệ ≥75%, cửa sổ 8 phiếu gần nhất). **Trọng số phiếu = (độ chắc − 50%) / 50%**: phiếu 55% gần như không tính, phiếu 99% tính gần đủ.
   - Ước lượng chủng tộc (`race`, cho nguồn khách) chỉ chạy tới khi đủ `RACE_VOTES = 4` lần cho mỗi người, sau đó chỉ chạy tuổi + giới tính → nhanh hơn.
   - HUD hiện `mặt xx ms` = thời gian trung bình một lần phân tích mặt.
 - **Nguồn khách:** DeepFace `race` → `region_mapping.classify_region_from_deepface_race` → `REGION_TO_ORIGIN` ("Dong A / Noi dia" → `Trong nuoc`, còn lại → `Nuoc ngoai`); phải chiếm ≥55% phiếu (`ORIGIN_MIN_SHARE`).
@@ -516,9 +519,9 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | `line_crossing.py` | `LineCrossingCounter` (`p1`, `p2`, `bridge_point`, `signed_distance`, `update`, `save`, `load`), `foot_point`, `FacadeCounter` (`update`, `mark_crossed`, `collect`) |
 | `crowd_counter.py` | `CameraThresholds`, `AlertLevelTracker`, `STATUS_COLOR_BGR`, `STATUS_LABEL_VI`, `CrowdCounter` (YOLO / HOG, dùng ở bản demo cũ) |
 | `group_detector.py` | `GroupDetector(min_size=10, hold_sec=10, gap_factor=1.2)`: `_approaching`, `_largest_cluster`, `update`, `current_size` |
-| `visitor_profiler.py` | `GENDER_VI`, `ORIGIN_VI`, `REGION_TO_ORIGIN`, `ORIGIN_MIN_SHARE`, `MIN_EYE_PX`, `MIN_SHARPNESS`, `MIN_BOX_H`, `face_quality`, `QUALITY_HINT`, `extract_keypoints`, `AsyncEngine` (luồng `deepface`, `avg_ms`), `_Track`, `VisitorProfiler` (`analyze_interval = 0.3`, `ready_interval = 1.5`, `wants`, `observe`, `mark_entered`, `mark_exited`, `step`, `origin_of`, `label`, `_save`, `_save_unknown`) |
-| `demographics_engine.py` | `CONFIDENCE_THRESHOLD=0.70`, `VOTE_WINDOW=6`, `MIN_VOTES_BEFORE_READY=3`, `_FLIP_MARGIN`, `RACE_VOTES = 4`, `TemporalVoter`, `DemographicsEngine(enable_region)` (`update`: đường keypoint hoặc dự phòng, trọng số phiếu (độ chắc − 50)/50, `last_path`; `forget`), tín hiệu dáng người (`estimate_gender_signal_from_pose`, mặc định tắt) |
-| `age_gender_estimator.py` | `age_to_range`, `_is_fake_full_image_region` (bỏ kết quả DeepFace khi không thấy mặt thật), `_apply_clahe`, `DEFAULT_DETECTOR`, `load_age_calibration`, `calibrate_age`, `_load_deepface`, `deepface_status`, `estimate_age_gender` (lỗi bộ tìm mặt → tự chuyển `opencv`), `estimate_demographics_from_person_box` (dự phòng), `FACE_SIZE`, `TTA_BELOW = 85`, `align_face_from_keypoints` (xoay + cắt mặt 224×224 theo 2 mắt), `_analyze_skip`, `estimate_from_aligned_face` (DeepFace `skip`, lật gương khi chưa chắc), `annotate_age_gender` |
+| `visitor_profiler.py` | `GENDER_VI`, `ORIGIN_VI`, `REGION_TO_ORIGIN`, `ORIGIN_MIN_SHARE`, `MIN_EYE_PX=18`, `MIN_SHARPNESS=45.0`, `MIN_BOX_H=130`, `face_quality`, `QUALITY_HINT`, `extract_keypoints`, `AsyncEngine` (luồng nền, `avg_ms`), `_Track`, `VisitorProfiler` (`analyze_interval = 0.3`, `ready_interval = 1.5`, `wants`, `observe`, `mark_entered`, `mark_exited`, `step`, `origin_of`, `label`, `_save`, `_save_unknown`) |
+| `demographics_engine.py` | `CONFIDENCE_THRESHOLD=0.75`, `VOTE_WINDOW=8`, `MIN_VOTES_BEFORE_READY=4`, `_FLIP_MARGIN`, `RACE_VOTES = 4`, `TemporalVoter`, `DemographicsEngine(enable_region)` (`update`: đường keypoint hoặc dự phòng, trọng số phiếu (độ chắc − 50)/50, `last_path`; `forget`), tín hiệu dáng người (`estimate_gender_signal_from_pose`, mặc định tắt) |
+| `age_gender_estimator.py` | `DEMOGRAPHICS_BACKEND` (mặc định `insightface`, có fallback `deepface`), `_load_insightface`, `_predict_genderage_insightface`, `align_face_for_insightface` (cắt 96×96 chuẩn InsightFace với trường nhìn rộng `eye_span=0.26`, `eye_y=0.40`), `age_to_range`, `_is_fake_full_image_region`, `_apply_clahe`, `DEFAULT_DETECTOR`, `load_age_calibration`, `calibrate_age`, `_load_deepface`, `demographics_status`, `estimate_age_gender`, `estimate_demographics_from_person_box`, `FACE_SIZE`, `TTA_BELOW = 85`, `align_face_from_keypoints` (cắt mặt 224×224 cho DeepFace), `_analyze_skip`, `estimate_from_aligned_face`, `annotate_age_gender` |
 | `region_mapping.py` | `REGION_ORDER`, `REGION_LABEL_DISPLAY`, `DISCLAIMER_VI`, `nationality_to_region`, `classify_region_from_deepface_race` |
 | `telegram_alert.py` | `trigger_buzzer_signal` (gọi `SMARTCAU_BUZZER_WEBHOOK` nếu có), `send_telegram_alert` (kiểu cũ) |
 | `camera_in.py`, `camera_out.py` | Bản cũ dùng `/entry`, `/exit`, không dùng vạch. **Không sửa lỗi ở đây** nếu đang chạy `camera_bridge.py` |

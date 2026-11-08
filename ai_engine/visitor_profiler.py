@@ -37,9 +37,9 @@ ORIGIN_MIN_SHARE = 0.55   # nhom khu vuc phai chiem >= 55% trong so phieu moi ke
 # Chi dua khung hinh vao DeepFace khi mat DU TO, NHIN GAN THANG, KHONG NHOE.
 # Khung hinh xau (nghieng, xa, mo do chuyen dong) la nguon chinh gay doan sai
 # gioi tinh / tuoi; bo qua chung lam phieu bau sach hon (xem docs/AI_CAI_THIEN.md).
-MIN_EYE_PX = 14          # khoang cach 2 mat toi thieu (px) ~ mat rong >= 35 px
-MIN_SHARPNESS = 35.0     # phuong sai Laplacian vung dau; thap = nhoe
-MIN_BOX_H = 110          # khi khong co keypoint (model khong phai pose): khung nguoi toi thieu (px)
+MIN_EYE_PX = 18          # khoang cach 2 mat toi thieu (px) ~ mat rong >= 45-50 px (tang tu 14 -> 18)
+MIN_SHARPNESS = 45.0     # phuong sai Laplacian vung dau; thap = nhoe (tang tu 35 -> 45)
+MIN_BOX_H = 130          # khi khong co keypoint: khung nguoi toi thieu (px) (tang tu 110 -> 130)
 _NOSE, _LEYE, _REYE = 0, 1, 2
 
 
@@ -270,7 +270,7 @@ class VisitorProfiler:
         if t.last_reject and not t.done:
             return [head, QUALITY_HINT.get(t.last_reject, "Chờ thấy rõ mặt")]
         if t.info is not None and not t.done:
-            return [head, f"Đang nhận diện {min(t.info.get('n_votes', 0), 3)}/3"]
+            return [head, f"Đang nhận diện {min(t.info.get('n_votes', 0), 4)}/4"]
         if not t.done:
             return [head, "Đang nhận diện…"]
         return None
