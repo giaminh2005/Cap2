@@ -24,12 +24,20 @@ Frontend chỉ đọc đúng các khóa JSON ghi ở đây; backend được th�
 | M3 | `GET /system_events?limit&event_type` | — | có `label` tiếng Việt |
 | M3 | `GET /incidents?status=open\|closed\|all` | — | F2.4 |
 | M3 | `POST /incidents/{id}/ack` `{note}` · `POST /incidents/{id}/close` | 👤 | FR-07 |
-| M4 | `GET /reports/summary?period=day\|week\|month&date=` | — | F5.2; PDF/Excel xuất ở frontend |
+| M4 | `GET /reports/summary?period=day\|week\|month\|year\|custom&date=&date_from=&date_to=` | — | F5.2, F5.3; xuất Excel |
+| M4 | `GET /reports/heatmap` · `GET /reports/daily` | — | biểu đồ nhiệt 8 tuần & danh sách báo cáo ngày |
+| M4 | `GET /reports/daily/{date}/pdf` · `GET /reports/weekly/pdf?date=` | — | xuất file PDF báo cáo chuẩn hành chính |
+| M4 | `POST /reports/daily/{date}/send` · `POST /reports/weekly/send?date=` | 🧑‍💼 | gửi báo cáo PDF tức thời qua Telegram |
 | M5 | `POST /tickets` `{date, hour?, ticket_count}` · `POST /tickets/bulk` · `GET /tickets` · `DELETE /tickets/{id}` | 👤 | F4.1 |
 | M5 | `GET /tickets/reconciliation?date=` → `{mode, entries_counted, compared_entries, tickets_sold, gap, gap_rate_pct, by_hour}` | — | F4.2, BRULE-08 |
+| M5 | `GET /tickets/reconciliation_range?date_from=&date_to=` | — | đối chiếu vé nhiều ngày |
+| M6 | `GET /insights/live` → `{entries_5m, exits_5m, net_trend, minutes_to_full, wait_label, forecast_today}` | — | F5.1; xu hướng, dự báo & thời gian chờ |
+| M6 | `GET /insights/summary` → danh sách nhận định tự động | — | tóm tắt tình hình tự động cho quản lý |
+| M3 | `GET /display/state` | — | F2.2; API thời gian thực cho bảng LED 2 đầu cầu |
 | M7 | `GET /config` → `{alert_threshold, warning_threshold, open_time, close_time, is_open_now, ...}` · `PUT /config` | — / 🔑 | F6.2, FR-13 |
-| M7 | `GET /recipients` · `POST/PUT/DELETE /recipients` · `POST /recipients/{id}/test` | 👤 / 🔑 | F6.3 |
-| M7 | `GET /privacy/summary` · `POST /privacy/purge?older_than_days=` (≥ 730) | 🧑‍💼 / 🔑 | BRULE-09 |
+| M7 | `GET /recipients` · `POST/PUT/DELETE /recipients` · `POST /recipients/{id}/test` · `GET /recipients/topics` | 👤 / 🔑 | F6.3; danh sách & cài đặt chủ đề nhận tin |
+| M7 | `GET /telegram/status` · `PUT/DELETE /telegram/token` · `GET /telegram/chats` | 🔑 | kết nối bot Telegram & tìm chat_id mới |
+| M7 | `GET /privacy/summary` · `POST /privacy/purge?older_than_days=` (≥ 730) | 🧑‍💼 / 🔑 | BRULE-09; dọn dẹp dữ liệu theo luật bảo vệ dữ liệu cá nhân |
 
 `event_type`: `WARNING`, `CRITICAL_ALERT`, `CRITICAL_CLEARED`, `GROUP_DETECTED`, `CAMERA_LOST`, `CAMERA_RESTORED`, `GATE_CLOSED`, `GATE_REOPENED`.
 

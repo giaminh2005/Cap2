@@ -215,10 +215,11 @@ Cap2/
 │   ├── group_detector.py         phát hiện đoàn khách
 │   ├── visitor_profiler.py       cổng chất lượng mặt, AsyncEngine (DeepFace nền), VisitorProfiler (hồ sơ khách)
 │   ├── demographics_engine.py    bỏ phiếu theo thời gian cho giới tính / tuổi / khu vực
-│   ├── age_gender_estimator.py   gọi DeepFace, lọc kết quả giả, hiệu chỉnh tuổi
+│   ├── age_gender_estimator.py   nhận diện giới tính/tuổi (InsightFace ONNX mặc định, fallback DeepFace)
 │   ├── region_mapping.py         nhóm chủng tộc DeepFace → nhóm khu vực
 │   ├── telegram_alert.py         trigger_buzzer_signal (còi ngoài) + gửi Telegram kiểu cũ
 │   ├── trackers/smartcau_botsort.yaml  cấu hình BoT-SORT
+│   ├── models/                   trọng số mô hình tải cục bộ (buffalo_s/genderage.onnx, deepface weights)
 │   ├── camera_in.py, camera_out.py     camera kiểu CŨ (1 camera vào, 1 camera ra) — không dùng nữa, giữ tham khảo
 ├── tools/                        CÔNG CỤ
 │   ├── kiem_tra_mang.py          kiểm tra kết nối nhiều máy
@@ -230,9 +231,12 @@ Cap2/
 │   ├── data_simulator.py, generate_dashboard.py, demo_run.py   bản demo cũ (dashboard HTML tĩnh)
 ├── tests/                        pytest (mục 11)
 ├── media/                        TỆP GỐC nhóm gửi: mascot/linh_than, mascot/linh_khuyen, phong_nen, tai_lieu (BRD, BFD, BPMN, Sprint0)
-├── docs/                         tài liệu
+├── docs/                         tài liệu hệ thống
+│   ├── database/                 lược đồ CSDL chuẩn hóa (000_initial_schema.sql, 001_proposed_constraints.sql, README.md)
+│   ├── lich_su/                  tài liệu tiến độ và các giai đoạn nâng cấp
+│   ├── TONG_QUAN_MA_NGUON.md, AI_CAI_THIEN.md, GHI_CHU_GIAO_DIEN.md, CAMERA_NGOAI.md, TRIEN_KHAI_NHIEU_MAY.md, API_CONTRACT.md, PHAN_CONG.md
 ├── legacy_demos/                 demo đầu tiên (không dùng)
-├── sample_data/                  dữ liệu mẫu CSV, ảnh thử
+├── sample_data/                  dữ liệu mẫu CSV, ảnh thử, sample_day.sql (dữ liệu 1 ngày vận hành chuẩn hóa)
 ├── requirements.txt, pytest.ini, .streamlit/config.toml, yolov8n.pt, yolov8n-pose.pt
 ```
 
@@ -610,6 +614,11 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 | `audit_log` | models.py::AuditLog | timestamp, username, action, detail | log_audit |
 
 **Thêm cột mới:** khai báo `Column(...)` trong lớp → khởi động backend → `ensure_schema` tự thêm. Không cần xóa tệp `.db`.
+
+**Lược đồ SQL và Dữ liệu mẫu:**
+- Lược đồ toàn bộ 17 bảng được lưu tại [`docs/database/000_initial_schema.sql`](database/000_initial_schema.sql).
+- Đề xuất bổ sung ràng buộc khóa ngoại & chỉ mục tại [`docs/database/001_proposed_constraints.sql`](database/001_proposed_constraints.sql).
+- Dữ liệu mẫu chuẩn một ngày vận hành (10/11/2026) được lưu tại [`sample_data/sample_day.sql`](../sample_data/sample_day.sql), có thể nạp vào CSDL riêng để kiểm thử theo hướng dẫn trong [`docs/database/README.md`](database/README.md).
 
 ---
 

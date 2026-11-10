@@ -8,7 +8,7 @@ Hệ thống đếm khách trên Chùa Cầu bằng 2 camera đặt ở 2 chân 
 
 ```
 Cap2/
-├── ai_engine/            Lớp AI tại camera (OpenCV + YOLOv8 + DeepFace)
+├── ai_engine/            Lớp AI tại camera (OpenCV + YOLOv8 + InsightFace ONNX / DeepFace)
 │   ├── camera_bridge.py      ★ chương trình camera chân cầu (dùng cho cả camera 1 và 2)
 │   ├── line_crossing.py      vạch kẻ vào/ra (F1.2, F1.3) + đếm lượt mặt tiền (F1.4)
 │   ├── group_detector.py     phát hiện đoàn khách ≥ 10 người (F3.1)
@@ -26,7 +26,8 @@ Cap2/
 │   └── views/            mỗi trang 1 file
 ├── tests/                pytest: backend 7 module, vạch kẻ, nhận diện, đoàn khách, mặt tiền
 ├── tools/                simulate_bridge.py (thử không cần camera), google_sheets_sync.py ...
-└── docs/                 API_CONTRACT.md, PHAN_CONG.md
+├── sample_data/          sample_day.sql (dữ liệu mẫu 1 ngày vận hành đầy đủ), CSV và ảnh thử
+└── docs/                 TONG_QUAN_MA_NGUON.md, database/ (lược đồ SQL), API_CONTRACT.md, AI_CAI_THIEN.md
 ```
 
 ## Cài đặt (1 lần mỗi máy)
@@ -89,6 +90,7 @@ Nhận diện giới tính / tuổi / nguồn khách bật sẵn; thêm `--no-de
 - Trên cửa sổ camera (**click vào cửa sổ trước** để nó nhận phím): **chữ L**, số 1 hoặc **chuột phải** = kẻ lại vạch (click 2 đầu vạch rồi click 1 điểm ở phía cầu), `R` = vạch mặc định, `Q` = thoát.
 - Tăng độ chính xác: `--imgsz 960`, `--model yolov8s-pose.pt`, `--face-detector retinaface`. Xem [docs/AI_CAI_THIEN.md](docs/AI_CAI_THIEN.md).
 - Không có camera: `python tools/simulate_bridge.py --random 200` để giả lập lượt qua cầu.
+- Dùng cơ sở dữ liệu mẫu một ngày đầy đủ (`sample_data/sample_day.sql`): xem hướng dẫn nạp và chạy tại [`docs/database/README.md`](docs/database/README.md).
 - **Nhận tin Telegram:** đặt biến `TELEGRAM_BOT_TOKEN` trên máy chạy backend, thêm chat_id ở trang **Người nhận cảnh báo**.
 
 ## Chạy trên nhiều máy
