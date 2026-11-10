@@ -6,3 +6,4 @@ __pycache__/
 ai_engine/config/
 config/
 tools/anh_camera/
+ai_engine/models/
