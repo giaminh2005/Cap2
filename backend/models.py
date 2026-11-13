@@ -60,16 +60,6 @@ class SystemEvent(Base):
     camera_id = Column(Integer, nullable=True)
 
 
-class RegionStat(Base):
-    """F3.3 - thong ke TONG HOP theo (ngay, gio, khu vuc), khong gan ca nhan."""
-    __tablename__ = "region_stats"
-    id = Column(Integer, primary_key=True, index=True)
-    date = Column(String, index=True)
-    hour = Column(Integer, index=True)
-    region = Column(String, index=True)
-    count = Column(Integer, default=0)
-
-
 class SystemConfig(Base):
     """F6.2 - CHI 1 dong (id=1): nguong canh bao + khung gio hoat dong (FR-13)."""
     __tablename__ = "system_config"

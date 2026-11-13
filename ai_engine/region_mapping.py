@@ -1,11 +1,8 @@
 """
 region_mapping.py
 --------------------
-Module DUNG CHUNG cho Phase 3 (nang cap): quy doi ve 5 NHOM KHU VUC rong,
-dung o CA 2 noi: (1) du lieu MO PHONG cho dashboard (data_simulator.py /
-generate_dashboard.py) va (2) uoc luong khu vuc TRUC TIEP tu camera qua
-DeepFace (demographics_engine.py) - de 2 ben dung CHUNG 1 bo nhan, bao cao
-khong bi lech thuat ngu.
+Quy doi ket qua "race" cua DeepFace ve NHOM KHU VUC rong (demographics_engine.py),
+roi visitor_profiler.REGION_TO_ORIGIN doi thanh "Trong nuoc/chau A" hoac "Quoc te".
 
 === GIOI HAN CO CHU DICH - DOC KY TRUOC KHI DUNG ===
 Day la nang cap CO CHU DICH them tinh nang "phan nhom khu vuc" (KHONG PHAI
@@ -19,9 +16,8 @@ nhom da thong nhat:
      tich/chung toc cu the cho tung nguoi.
   2. CHI luu du lieu TONG HOP (vd "14h-15h ngay X co ~12 luot thuoc nhom
      Dong A"), TUYET DOI KHONG gan nhan khu vuc vao ho so ca nhan/track_id
-     cu the (xem backend/ - bang RegionStat la bang TONG HOP THEO
-     GIO, khong co cot lien ket toi 1 nguoi/khuon mat nao).
-  3. LUON hien disclaimer ro rang (xem DISCLAIMER_VI ben duoi) bat cu dau
+     cu the).
+  3. LUON hien ghi chu ro rang (trang Co cau khach, bao cao PDF) bat cu dau
      con so nay duoc hien thi - vi day la UOC LUONG THO tu dac diem guong
      mat qua model AI pretrained, KHONG PHAI du lieu quoc tich chinh xac.
 
@@ -36,53 +32,7 @@ ke GOC cua du an da neu, khong the thay the hoan toan bang camera.
 
 from typing import Dict, Optional, Tuple
 
-# Thu tu hien thi co dinh, dung chung cho moi bieu do/bang de khong bi dao lon.
-REGION_ORDER = [
-    "Dong A / Noi dia",
-    "Phuong Tay",
-    "Nam A",
-    "Khac",
-]
-
-REGION_LABEL_DISPLAY = {
-    "Dong A / Noi dia": "Đông Á / Nội địa",
-    "Phuong Tay": "Phương Tây",
-    "Nam A": "Nam Á",
-    "Khac": "Khác",
-}
-
-DISCLAIMER_VI = (
-    "Nhom khu vuc o day la UOC LUONG THO tu dac diem guong mat qua mo hinh AI "
-    "(hoac, trong dashboard nay, tu du lieu MO PHONG) - KHONG PHAI du lieu quoc "
-    "tich chinh xac tung nguoi, va KHONG duoc luu/gan cho ho so ca nhan nao. Chi "
-    "dung de thong ke xu huong tong hop phuc vu marketing, khong dung lam can cu "
-    "xac dinh danh tinh/quoc tich 1 ca nhan cu the."
-)
-
-# --- (1) Du lieu MO PHONG: quy doi tu "quoc gia/xuat xu" (data_simulator.py) ---
-_NATIONALITY_TO_REGION = {
-    "Viet Nam (noi dia)": "Dong A / Noi dia",
-    "Han Quoc": "Dong A / Noi dia",
-    "Trung Quoc": "Dong A / Noi dia",
-    "Dai Loan": "Dong A / Noi dia",
-    "Nhat Ban": "Dong A / Noi dia",
-    "Phap": "Phuong Tay",
-    "My": "Phuong Tay",
-    "Duc": "Phuong Tay",
-    "Uc": "Phuong Tay",
-    "Anh": "Phuong Tay",
-    "Thai Lan": "Khac",
-    "An Do": "Nam A",
-}
-
-
-def nationality_to_region(nationality: str) -> str:
-    """Quy doi 1 nhan "quoc gia/xuat xu" (du lieu mo phong) sang 1 trong 4
-    nhom khu vuc. Khong tim thay -> "Khac"."""
-    return _NATIONALITY_TO_REGION.get(nationality, "Khac")
-
-
-# --- (2) Camera THAT: quy doi tu ket qua DeepFace action "race" ---
+# --- Quy doi tu ket qua DeepFace action "race" ---
 # DeepFace tra ve xac suat cho 6 nhan: asian, indian, black, white,
 # middle eastern, latino hispanic. Gop lai thanh 4 nhom rong o tren.
 _DEEPFACE_RACE_TO_REGION = {

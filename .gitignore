@@ -7,3 +7,4 @@ ai_engine/config/
 config/
 tools/anh_camera/
 ai_engine/models/
+.DS_Store

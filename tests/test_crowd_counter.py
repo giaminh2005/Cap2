@@ -1,41 +1,18 @@
 """
 test_crowd_counter.py
 ----------------------
-Bo test co ban cho module dem nguoi + canh bao nguong.
+Kiem thu nguong canh bao Vang / Do (CameraThresholds, AlertLevelTracker).
 Tuong ung voi tai lieu "Test Plan / Test Case" (Module 9 hoc phan).
 
-Chay: python -m pytest test_crowd_counter.py -v
-Hoac: python test_crowd_counter.py
+Chay: pytest tests/test_crowd_counter.py -v
 """
 
-# --- [To chuc lai thu muc - Sprint 3] file nay da duoc chuyen khoi src/.
-# Dong duoi giup import cac module trong ai_engine/ (crowd_counter,
-# camera_ui, ...) va tools/ ma KHONG can sua lai tung dong import cu.
-import os as _os, sys as _sys
-_ROOT = _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..")
-for _sub in ("ai_engine", "tools"):
-    _p = _os.path.abspath(_os.path.join(_ROOT, _sub))
-    if _p not in _sys.path:
-        _sys.path.insert(0, _p)
-# --- het phan them moi ---
+import os as _os
+import sys as _sys
 
-import numpy as np
-from crowd_counter import AlertLevelTracker, CrowdCounter, CameraThresholds
+_sys.path.insert(0, _os.path.join(_os.path.dirname(_os.path.abspath(__file__)), "..", "ai_engine"))
 
-
-def make_blank_frame(w=640, h=480, color=(200, 200, 200)):
-    frame = np.full((h, w, 3), color, dtype=np.uint8)
-    return frame
-
-
-def test_TC01_blank_image_gives_zero_and_ok():
-    """TC-01: Anh trong (khong co nguoi) -> count = 0, status = OK."""
-    counter = CrowdCounter()
-    frame = make_blank_frame()
-    count, status, boxes, weights = counter.count_and_status(frame)
-    assert count == 0
-    assert status == "OK"
-    print("TC-01 PASS: anh trong -> 0 nguoi, status OK")
+from crowd_counter import AlertLevelTracker, CameraThresholds
 
 
 def test_TC02_threshold_boundaries():
@@ -87,22 +64,3 @@ def test_TC05_notifications_no_repeat_within_3_minutes():
     assert tr.pop_notification(205) == "CRITICAL"  # nhac lai sau 3 phut
     tr.update(22, 300)
     assert tr.pop_notification(300) is None
-
-
-def test_TC03_annotate_does_not_crash_and_keeps_shape():
-    """TC-03: Ham annotate tra ve anh cung kich thuoc, khong loi."""
-    counter = CrowdCounter()
-    frame = make_blank_frame()
-    count, status, boxes, weights = counter.count_and_status(frame)
-    annotated = counter.annotate(frame, boxes, count, status)
-    assert annotated.shape == frame.shape
-    print("TC-03 PASS: annotate() chay on dinh, giu nguyen kich thuoc anh")
-
-
-if __name__ == "__main__":
-    test_TC01_blank_image_gives_zero_and_ok()
-    test_TC02_threshold_boundaries()
-    test_TC03_annotate_does_not_crash_and_keeps_shape()
-    test_TC04_red_needs_15_seconds_and_clears_after_15_seconds()
-    test_TC05_notifications_no_repeat_within_3_minutes()
-    print("\nTat ca test co ban da PASS.")

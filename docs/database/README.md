@@ -13,7 +13,7 @@
 
 | Tệp | Nội dung | Trạng thái |
 |---|---|---|
-| `000_initial_schema.sql` | Lược đồ hiện hành, 17 bảng, khớp các lớp SQLAlchemy | Đang dùng |
+| `000_initial_schema.sql` | Lược đồ hiện hành, 16 bảng, khớp các lớp SQLAlchemy | Đang dùng |
 | `001_proposed_constraints.sql` | Thêm khóa ngoại, UNIQUE (date, hour) cho vé, CHECK, bảng `recipient_topics` | Đề xuất, chưa áp dụng vào code |
 | `../../sample_data/sample_day.sql` | Dữ liệu mẫu một ngày vận hành (10/11/2026) | Dùng để thử, demo |
 

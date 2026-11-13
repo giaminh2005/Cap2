@@ -259,11 +259,6 @@ def demographics_status():
             return True, None
     return _load_deepface() is not None, _DEEPFACE_ERROR
 
-def deepface_status():
-    """Tuong thich nguoc voi camera_bridge.py cu."""
-    return demographics_status()
-
-
 def estimate_age_gender(image_bgr, detector_backend: str = None, include_race: bool = False) -> List[Dict]:
     """Tra ve danh sach dict, moi phan tu ung voi 1 khuon mat THAT phat
     hien duoc (da loc bo cac ket qua "gia"):
@@ -364,8 +359,7 @@ def estimate_age_gender(image_bgr, detector_backend: str = None, include_race: b
 def estimate_demographics_from_person_box(
     frame, box: Tuple[int, int, int, int], include_race: bool = False
 ) -> Dict:
-    """Ham DUNG CHUNG cho cac script camera (webcam_tracking_demo.py,
-    camera_in.py, camera_out.py): nhan 1 khung nguoi (x, y, w, h) tu YOLO/HOG,
+    """Duong DU PHONG (model khong co keypoint): nhan 1 khung nguoi (x, y, w, h) tu YOLO,
     cat vung DAU + VAI (nua tren cua khung nguoi, KHONG mo rong kieu "them
     toc" nhu ban cu vi lam sai ty le DeepFace can), roi de DeepFace TU tim
     khuon mat that trong vung do.
@@ -510,7 +504,6 @@ if __name__ == "__main__":
         out_path = path.rsplit(".", 1)[0] + "_age_gender.jpg"
         cv2.imwrite(out_path, annotated)
         print(f"Da luu anh ket qua: {out_path}")
-
 
 
 # =====================================================================

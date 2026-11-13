@@ -40,7 +40,7 @@ from sqlalchemy.orm import Session
 from ..database import Base, get_db
 from ..models import get_state, log_audit
 from ..security import require_api_key, require_roles
-from ..timeutil import LOCAL_UTC_OFFSET, iso, local_now
+from ..timeutil import iso, local_now
 
 router = APIRouter(prefix="/bridge", tags=["F1 - Dem khach tren cau (2 camera)"])
 

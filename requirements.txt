@@ -1,70 +1,40 @@
-# ===== SmartCau AI - requirements.txt (gop du cho CA 2 huong trong du an) =====
-#
-# NANG CAP (Phase 1, bug #6): ban truoc de "ultralytics>=8.1" nhung
-# poc_dem_nguoi_chua_cau.py lai dung model "yolo11n.pt" - YOLO11 CHI duoc
-# ultralytics ho tro tu ban >=8.3.0 tro len, ban 8.1 se bao loi "model not
-# found". Da nang len >=8.3.0 de khop voi model dang dung.
-#
-# NANG CAP (Phase 1, bug tf-keras conflict): tren may da cai san TensorFlow
-# 2.16+ (di kem Keras 3), DeepFace se bao loi kieu "Keras 3 is not
-# supported" neu KHONG co tf-keras (goi y keras cu, tuong thich nguoc) -
-# da ghim ro rang + ghi chu cach xu ly khi van loi (xem duoi).
-#
-# Pin PHIEN BAN TOI THIEU (khong pin CHINH XAC tuyet doi) vi moi truong
-# soan tai lieu nay KHONG co Internet de xac minh chinh xac ban nao dang
-# co san tren PyPI luc ban cai dat - neu 1 dong nao do bao loi "could not
-# find a version", thu bo gioi han phien ban (vd chi "ultralytics") roi
-# pip se tu chon ban moi nhat tuong thich.
+# ===== SmartCau AI — thu vien can cai =====
+# Cai:  pip install -r requirements.txt   (trong moi truong ao .venv, Python 3.10–3.12)
 
-# --- Nhom 1 - Demo offline co ban (khong can Internet/GPU sau khi cai xong) ---
-#   ai_engine/crowd_counter.py (backend "hog"), tools/data_simulator.py, tools/generate_dashboard.py, tools/demo_run.py
-opencv-python>=4.9,<5     # KHONG dung OpenCV 5: bo HOGDescriptor (hong test) va ban "headless" di kem khong mo duoc cua so camera
+# --- Camera + AI (ai_engine/) ---
+opencv-python>=4.9,<5      # KHONG dung OpenCV 5 / ban "headless": khong mo duoc cua so camera
 numpy>=1.26
-pandas>=2.2
-matplotlib>=3.8
+ultralytics>=8.3.0         # YOLOv8-pose: phat hien + theo doi nguoi (lan dau tu tai yolov8n-pose.pt)
+onnxruntime>=1.16          # chay mo hinh gioi tinh / tuoi InsightFace genderage.onnx (mac dinh, nhanh)
+deepface>=0.0.93           # du phong khi chua co mo hinh InsightFace + uoc luong nguon khach (race)
+tf-keras>=2.16             # DeepFace can neu may co TensorFlow 2.16+ (Keras 3)
+Pillow>=10.0               # chu tieng Viet tren camera, anh trong bao cao PDF
+requests>=2.31             # camera gui so lieu ve may chu, goi Telegram
 
-# --- Nhom 2 - He thong camera THAT: dem nguoi + nhan dien tuoi/gioi tinh + server luu du lieu ---
-#   src/webcam_tracking_demo.py, camera_in.py, camera_out.py, age_gender_estimator.py,
-#   demographics_engine.py, api_server.py (lan dau chay se tu tai model, CAN Internet)
-ultralytics>=8.3.0         # YOLOv8/YOLO11 (detect + pose) - dung chung cho crowd_counter.py, camera_in/out.py, demographics_engine.py
-deepface>=0.0.93           # uoc luong tuoi/gioi tinh/(tuy chon) khu vuc tu khuon mat
-tf-keras>=2.16             # BAT BUOC neu may da cai TensorFlow 2.16+ (Keras 3) - DeepFace can API Keras cu
-requests>=2.31             # goi API noi bo + gui canh bao Telegram/buzzer
-fastapi>=0.110              # server luu du lieu (backend/)
-uvicorn>=0.29                # chay server fastapi
-sqlalchemy>=2.0              # luu du lieu vao SQLite
+# --- May chu (backend/) ---
+fastapi>=0.110
+uvicorn>=0.29
+sqlalchemy>=2.0
 pydantic>=2.6
+fpdf2>=2.7                 # bao cao PDF
+matplotlib>=3.8            # bieu do trong bao cao PDF
+pandas>=2.2                # bang bao cao, doi chieu ve
+openpyxl>=3.1              # xuat / doc tep Excel
 
-# --- Nhom 3 - PoC dem nguoi theo VUNG (zone), stack da chot trong bao cao Module 4/5 ---
-#   src/poc_dem_nguoi_chua_cau.py
-supervision>=0.21            # zone counting (PolygonZone) + ByteTrack (ban CU, <0.31)
-trackers>=2.0                # NANG CAP: tu supervision>=0.31, thu vien nay GO BO ByteTrack,
-                              # chuyen qua 1 goi RIENG ten "trackers" (xem _create_tracker()
-                              # trong poc_dem_nguoi_chua_cau.py - code TU NHAN dung ban nao
-                              # dang co san tren may, KHONG can chon tay/sua code).
-                              # Neu "pip install -r requirements.txt" bao loi KHONG tim thay
-                              # "trackers" (phien ban pip qua cu), cu bo qua dong nay - script
-                              # van chay binh thuong NEU may ban dang co supervision <0.31.
-# (ultralytics da liet ke o Nhom 2, dung chung cho ca Nhom 3)
+# --- Web quan ly (frontend/) ---
+streamlit>=1.50            # can st.navigation, st.fragment, st.segmented_control
+plotly>=5.20               # bieu do tren web
 
-# --- Nhom 4 (NANG CAP MOI) - Trang Admin Web (quan ly dashboard) + dong bo Google Sheets ---
-#   frontend/app.py (chay bang "streamlit run frontend/app.py"), tools/google_sheets_sync.py
-#   Day la cac thu vien TUY CHON - neu ban CHI dung he thong camera + dashboard
-#   tinh (generate_dashboard.py) ma KHONG can trang quan ly web/dong bo Sheets,
-#   co the bo qua Nhom 4 nay (cai thieu se chi bao loi khi chay admin_web/app.py
-#   hoac google_sheets_sync.py, khong anh huong cac phan khac cua du an).
-streamlit>=1.50              # giao dien web nhieu trang (frontend/app.py, can st.navigation, st.fragment)
-plotly>=5.20                 # bieu do dep hon o trang "Tong quan" (co fallback neu thieu)
-streamlit-option-menu>=0.3.12  # thanh dieu huong sidebar dep hon (co fallback neu thieu)
-fpdf2>=2.7                   # xuat bao cao PDF co tieng Viet (trang "Bao cao dinh ky")
-openpyxl>=3.1                # xuat bao cao Excel
-gspread>=6.0                 # ghi/doc Google Sheets (tools/google_sheets_sync.py)
-google-auth>=2.29            # xac thuc Google Service Account cho gspread
+# --- Dong bo Google Sheets (tuy chon: trang "Google Sheets", tools/google_sheets_sync.py) ---
+gspread>=6.0
+google-auth>=2.29
 
-# === Neu cai deepface/tf-keras van bao loi xung dot Keras ===
-# Thu cai them (hoac thay the) 1 ban TensorFlow CU HON, on dinh voi
-# DeepFace hon ban moi nhat:
-#     pip install "tensorflow<2.16"
-# roi KHONG can tf-keras nua (bo dong tf-keras o tren neu lam cach nay).
-pytest>=8.0                  # chay tests/ (kiem thu truoc khi tao Pull Request)
-httpx>=0.27                  # can cho FastAPI TestClient trong tests/test_api.py
+# --- Kiem thu ---
+pytest>=8.0
+httpx>=0.27                # FastAPI TestClient
+
+# Ghi chu:
+# - Mo hinh InsightFace: dat tep genderage.onnx (bo buffalo_s) vao ai_engine/models/buffalo_s/ hoac
+#   ~/.insightface/models/buffalo_s/. Neu muon tu tai, cai them: pip install insightface
+#   (tren Windows can "Microsoft C++ Build Tools"). Khong co mo hinh -> tu dung DeepFace.
+# - DeepFace / tf-keras loi xung dot Keras: thu  pip install "tensorflow<2.16"  roi bo tf-keras.

@@ -62,8 +62,6 @@ STATUS_META = {
     "ALERT": {"label": "Vàng · đang xác nhận", "tone": "warn"},
     "CRITICAL": {"label": "Cảnh báo Đỏ · Quá tải", "tone": "danger"},
 }
-EVENT_TONE = {"WARNING": "warn", "CRITICAL_ALERT": "danger", "CRITICAL_CLEARED": "ok", "GROUP_DETECTED": "info",
-              "CAMERA_LOST": "danger", "CAMERA_RESTORED": "ok", "GATE_CLOSED": "warn", "GATE_REOPENED": "ok"}
 
 
 # ------------------------------------------------------------------- theme
@@ -220,15 +218,6 @@ def alert_box(text: str, tone: str = "danger"):
 
 def empty(text: str):
     st.markdown(f'<div class="sc-empty">{text}</div>', unsafe_allow_html=True)
-
-
-def capacity_bar(count: int, maximum: int, warn_at: int = None):
-    pct = min(100, round(count / maximum * 100)) if maximum else 0
-    warn_at = warn_at if warn_at is not None else round(maximum * 0.75)
-    color = C["danger"] if count > maximum else C["warn"] if count >= warn_at else C["ok"]
-    st.markdown(f'<div class="sc-meta"><span>SỨC CHỨA CẦU</span><span><b style="color:var(--ink)">{count} / {maximum}</b>'
-                f' người · {pct}%</span></div><div class="sc-bar"><div style="width:{pct}%;background:{color}"></div></div>',
-                unsafe_allow_html=True)
 
 
 def style_fig(fig, height=320, legend=True):

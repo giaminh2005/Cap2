@@ -6,21 +6,19 @@ Phu trach: MINH.   Chuc nang BFD: F3.2, F3.3   (FR-09, BRULE-05, BRULE-06)
     POST /visit_events             camera luu nhan cua 1 luot khach vao (gioi tinh, khoang tuoi, trong/ngoai nuoc)
     GET  /visit_events             tra cuu, loc theo ngay / gioi tinh / tuoi / nguon khach
     GET  /stats/demographics       co cau khach theo gio, khoang tuoi, trong nuoc / nuoc ngoai
-    POST /region_stats, GET /stats/region   (cu) bo dem khu vuc tong hop
 
 BRULE-06: luot co gender = None (do tin cay < 70%) duoc dem rieng la
 "Khong xac dinh" va KHONG dua vao ty le.
 """
 
-from datetime import datetime
 from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
 from ..database import get_db
-from ..models import RegionStat, VisitEvent
-from ..schemas import RegionStatIn, VisitEventIn
+from ..models import VisitEvent
+from ..schemas import VisitEventIn
 from ..security import require_api_key
 from ..timeutil import iso, local_day_range_utc, local_now, parse_day, to_local
 
@@ -104,22 +102,3 @@ def demographics_summary(date_from: str = "", date_to: str = "", date: str = "",
     rows = db.query(VisitEvent).filter(VisitEvent.timestamp >= start, VisitEvent.timestamp < end).all()
     return {"date_from": d1.strftime("%Y-%m-%d"), "date_to": d2.strftime("%Y-%m-%d"), **summarize_visits(rows)}
 
-
-@router.post("/region_stats", dependencies=[Depends(require_api_key)])
-def bump_region_stat(stat: RegionStatIn, db: Session = Depends(get_db)):
-    now = local_now()
-    date_str = now.strftime("%Y-%m-%d")
-    row = (db.query(RegionStat).filter(RegionStat.date == date_str, RegionStat.hour == now.hour,
-                                       RegionStat.region == stat.region).first())
-    if row is None:
-        row = RegionStat(date=date_str, hour=now.hour, region=stat.region, count=0)
-        db.add(row)
-    row.count += 1
-    db.commit()
-    return {"saved": True, "date": row.date, "hour": row.hour, "region": row.region, "count": row.count}
-
-
-@router.get("/stats/region")
-def region_stats(db: Session = Depends(get_db)):
-    return [{"date": r.date, "hour": r.hour, "region": r.region, "count": r.count}
-            for r in db.query(RegionStat).all()]

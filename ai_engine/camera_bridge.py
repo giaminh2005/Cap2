@@ -70,7 +70,7 @@ from camera_ui import TextLayer, draw_person_box, panel_lines, vietnamese_text_s
 from crowd_counter import AlertLevelTracker, CameraThresholds
 from group_detector import GroupDetector
 from line_crossing import FacadeCounter, LineCrossingCounter, foot_point
-from telegram_alert import trigger_buzzer_signal
+from buzzer import trigger_buzzer_signal
 from visitor_profiler import VisitorProfiler, extract_keypoints
 
 API_BASE = os.environ.get("SMARTCAU_API", "http://127.0.0.1:8000")   # doi bang --api khi may chu la may khac

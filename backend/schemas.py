@@ -30,6 +30,3 @@ class SystemEventIn(BaseModel):
     message: Optional[str] = None
     camera_id: Optional[int] = None
 
-
-class RegionStatIn(BaseModel):
-    region: str

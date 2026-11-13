@@ -174,11 +174,12 @@ def test_bridge_validation():
 
 def test_bridge_dem_resets_on_new_day(monkeypatch):
     import backend.routers.bridge as bridge
+    from backend.timeutil import LOCAL_UTC_OFFSET
     client.post("/bridge/reset", headers=ADMIN, params={"reset_dem": True})
     _cross(1, "in")
     _cross(2, "in")
     assert client.get("/bridge/state").json()["dem"] == 2
-    tomorrow = datetime.utcnow() + bridge.LOCAL_UTC_OFFSET + timedelta(days=1)
+    tomorrow = datetime.utcnow() + LOCAL_UTC_OFFSET + timedelta(days=1)
     monkeypatch.setattr(bridge, "_local_now", lambda: tomorrow)
     s = client.get("/bridge/state").json()
     assert s["dem"] == 0 and s["date"] == tomorrow.strftime("%Y-%m-%d")
@@ -286,7 +287,6 @@ def test_heatmap_shape_and_totals():
 
 
 def test_daily_report_after_closing_time():
-    from datetime import datetime as dt
     from backend import daily_report
     from backend.database import SessionLocal
     from backend.timeutil import local_now
