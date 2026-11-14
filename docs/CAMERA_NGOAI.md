@@ -61,3 +61,6 @@ Mỗi chân cầu cần 1 camera **riêng**. Webcam của laptop chỉ dùng đ�
 | Hình điện thoại giật, trễ | Wi-Fi yếu: để điện thoại gần bộ phát, giảm độ phân giải trong ứng dụng xuống 1280x720, hoặc dùng DroidCam qua cáp USB |
 | Điện thoại mất kết nối giữa chừng | Camera tự thử kết nối lại mỗi 3 giây và báo "mất tín hiệu" về máy chủ; kiểm tra pin, khóa màn hình, Wi-Fi |
 | Hình bị xoay ngang / ngược | Chỉnh hướng quay trong ứng dụng điện thoại (IP Webcam: *Video orientation*) |
+
+## Xem hình camera trên web
+Trang **Camera** của web quản lý hiện hình trực tiếp của từng chân cầu (chỉ quản lý / quản trị viên). Camera tự gửi hình khi chạy; thêm `--no-stream` nếu mạng yếu và không cần xem hình trên web.

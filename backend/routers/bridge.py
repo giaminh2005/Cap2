@@ -25,21 +25,31 @@ ke theo gio / ngay / thang / nam / khoang thoi gian bat ky
 
 So onbridge duoc dong bo vao occupancy_state -> GET /stats/occupancy,
 /stats/current, Tong quan, Bang LED dung duoc ngay ma khong phai sua.
+
+Hinh truc tiep (trang "Camera" tren web):
+    POST /bridge/stream_frame/{id}     camera gui anh JPEG moi nhat (~12 anh/giay, X-API-Key)
+    GET  /bridge/stream/{id}?t=<token> luong MJPEG cho the <img> (chi quan ly / quan tri xem duoc;
+                                        token dang nhap dat tren URL vi the <img> khong gui header)
+    GET  /bridge/stream_snapshot/{id}?t=<token>   1 anh JPEG moi nhat
+Anh chi nam trong bo nho (khong ghi ra o dia), anh cu hon STREAM_FRESH_SEC coi nhu khong co.
 """
 
+import asyncio
 import threading
+import time
 from collections import OrderedDict
 from datetime import datetime, timedelta
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, Response
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from sqlalchemy import Column, DateTime, Integer, String
 from sqlalchemy.orm import Session
 
 from ..database import Base, get_db
 from ..models import get_state, log_audit
-from ..security import require_api_key, require_roles
+from ..security import current_principal, require_api_key, require_roles
 from ..timeutil import iso, local_now
 
 router = APIRouter(prefix="/bridge", tags=["F1 - Dem khach tren cau (2 camera)"])
@@ -170,21 +180,94 @@ def record_crossing(ev: CrossingIn, db: Session = Depends(get_db)):
 def heartbeat(hb: HeartbeatIn, db: Session = Depends(get_db)):
     if hb.camera_id not in CAMERA_IDS:
         raise HTTPException(status_code=400, detail="camera_id phải là 1 hoặc 2.")
-    row = db.query(CameraStatus).filter(CameraStatus.camera_id == hb.camera_id).first()
-    now = datetime.utcnow()
-    if row is None:
-        row = CameraStatus(camera_id=hb.camera_id, started_at=now)
-        db.add(row)
-    elif now - row.last_seen > timedelta(seconds=OFFLINE_AFTER_SEC):
-        row.started_at = now
-    row.source, row.fps, row.line = hb.source, int(round(hb.fps)), hb.line
-    row.sends_alerts, row.demographics, row.last_seen = int(hb.sends_alerts), int(hb.demographics), now
-    row.machine = hb.machine[:60]
-    db.commit()
+    with _LOCK:   # 2 nhip tim dau tien cung luc (vd chay trung camera) -> khong chen trung dong
+        row = db.query(CameraStatus).filter(CameraStatus.camera_id == hb.camera_id).first()
+        now = datetime.utcnow()
+        if row is None:
+            row = CameraStatus(camera_id=hb.camera_id, started_at=now)
+            db.add(row)
+        elif now - row.last_seen > timedelta(seconds=OFFLINE_AFTER_SEC):
+            row.started_at = now
+        row.source, row.fps, row.line = hb.source, int(round(hb.fps)), hb.line
+        row.sends_alerts, row.demographics, row.last_seen = int(hb.sends_alerts), int(hb.demographics), now
+        row.machine = hb.machine[:60]
+        db.commit()
     return {"ok": True}
 
 
 OFFLINE_AFTER_SEC = 30   # NFR-03: bao mat tin hieu camera trong 30 giay
+
+
+# ------------------------------------------------------------------ hinh truc tiep
+STREAM_FRESH_SEC = 5          # anh cu hon -> camera coi nhu khong con phat hinh
+STREAM_MAX_BYTES = 2_000_000  # 1 anh JPEG toi da 2 MB
+STREAM_VIEW_ROLES = ("admin", "quan_ly")   # trung voi quyen xem trang "Camera"
+_FRAMES = {}                  # camera_id -> (jpeg bytes, time.monotonic() luc nhan)
+_FRAME_LOCK = threading.Lock()
+
+
+def _check_cam(camera_id: int):
+    if camera_id not in CAMERA_IDS:
+        raise HTTPException(status_code=400, detail="camera_id phải là 1 hoặc 2.")
+
+
+def _fresh_frame(camera_id: int):
+    with _FRAME_LOCK:
+        item = _FRAMES.get(camera_id)
+    if item and time.monotonic() - item[1] <= STREAM_FRESH_SEC:
+        return item
+    return None
+
+
+def _require_viewer(t: Optional[str], request: Request, db: Session):
+    """Token dang nhap tu ?t= (the <img> khong gui duoc header) hoac header Authorization."""
+    auth = request.headers.get("authorization") or (f"Bearer {t}" if t else None)
+    p = current_principal(authorization=auth, x_admin_key=request.headers.get("x-admin-key"), db=db)
+    if p.role not in STREAM_VIEW_ROLES:
+        raise HTTPException(status_code=403, detail="Vai trò của bạn không được xem hình camera.")
+
+
+@router.post("/stream_frame/{camera_id}", dependencies=[Depends(require_api_key)])
+async def upload_stream_frame(camera_id: int, request: Request):
+    _check_cam(camera_id)
+    body = await request.body()
+    if not body:
+        raise HTTPException(status_code=400, detail="Thiếu ảnh.")
+    if len(body) > STREAM_MAX_BYTES:
+        raise HTTPException(status_code=413, detail="Ảnh quá lớn.")
+    with _FRAME_LOCK:
+        _FRAMES[camera_id] = (body, time.monotonic())
+    return {"ok": True}
+
+
+@router.get("/stream_snapshot/{camera_id}")
+def stream_snapshot(camera_id: int, request: Request, t: Optional[str] = Query(None), db: Session = Depends(get_db)):
+    _check_cam(camera_id)
+    _require_viewer(t, request, db)
+    item = _fresh_frame(camera_id)
+    if not item:
+        raise HTTPException(status_code=404, detail="Chưa có hình từ camera này.")
+    return Response(content=item[0], media_type="image/jpeg", headers={"Cache-Control": "no-store"})
+
+
+@router.get("/stream/{camera_id}")
+async def live_stream(camera_id: int, request: Request, t: Optional[str] = Query(None),
+                      db: Session = Depends(get_db)):
+    """Luong MJPEG. Chi gui khi co anh MOI; dung khi nguoi xem dong trang."""
+    _check_cam(camera_id)
+    _require_viewer(t, request, db)
+
+    async def gen():
+        sent = None
+        while not await request.is_disconnected():
+            item = _fresh_frame(camera_id)
+            if item and item[1] != sent:
+                sent = item[1]
+                yield b"--frame\r\nContent-Type: image/jpeg\r\n\r\n" + item[0] + b"\r\n"
+            await asyncio.sleep(0.06)
+
+    return StreamingResponse(gen(), media_type="multipart/x-mixed-replace; boundary=frame",
+                             headers={"Cache-Control": "no-store"})
 
 
 @router.get("/cameras")
@@ -194,15 +277,17 @@ def cameras(db: Session = Depends(get_db)):
     out = []
     for cid in CAMERA_IDS:
         r = rows.get(cid)
+        has_stream = _fresh_frame(cid) is not None
         if r is None:
             out.append({"camera_id": cid, "online": False, "last_seen": None, "source": "", "fps": 0,
-                        "line": "", "sends_alerts": False, "demographics": False, "started_at": None, "machine": ""})
+                        "line": "", "sends_alerts": False, "demographics": False, "started_at": None, "machine": "",
+                        "has_stream": has_stream})
             continue
         out.append({"camera_id": cid, "online": (now - r.last_seen).total_seconds() <= OFFLINE_AFTER_SEC,
                     "last_seen": iso(r.last_seen), "seconds_ago": int((now - r.last_seen).total_seconds()),
                     "source": r.source, "fps": r.fps, "line": r.line, "sends_alerts": bool(r.sends_alerts),
                     "demographics": bool(r.demographics), "started_at": iso(r.started_at),
-                    "machine": r.machine or ""})
+                    "machine": r.machine or "", "has_stream": has_stream})
     return out
 
 

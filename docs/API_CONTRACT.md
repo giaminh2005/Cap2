@@ -13,7 +13,9 @@ Frontend chỉ đọc đúng các khóa JSON ghi ở đây; backend được th�
 | M1 | `POST /bridge/crossing` `{camera_id, direction: in\|out, track_id}` → `{num1, num2, onbridge, dem, date, reset}` | 📷 | F1.2, F1.3 |
 | M1 | `GET /bridge/state` · `GET /bridge/stats?group=hour\|day\|month\|year&date_from&date_to` | — | |
 | M1 | `POST /bridge/reset?reset_dem=` | 🧑‍💼 | |
-| M1 | `POST /bridge/heartbeat` · `GET /bridge/cameras` | 📷 / — | F1.1, NFR-03 |
+| M1 | `POST /bridge/heartbeat` · `GET /bridge/cameras` (thêm `has_stream`) | 📷 / — | F1.1, NFR-03 |
+| M1 | `POST /bridge/stream_frame/{id}` (thân = ảnh JPEG) | 📷 | hình trực tiếp, tối đa 2 MB/ảnh |
+| M1 | `GET /bridge/stream/{id}?t=<token>` (MJPEG) · `GET /bridge/stream_snapshot/{id}?t=<token>` | 🧑‍💼 | hình trực tiếp cho trang Camera; ảnh cũ hơn 5 giây → 404 |
 | M1 | `POST /occupancy` `{count, status}` · `GET /stats/occupancy` · `GET /stats/occupancy/history?minutes=60` | 📷 / — | |
 | M1 | `GET /stats/current` → `{current_count, current_status, status_stale, alert_threshold, entries_today, facade_today, profiles_today, gender_today, open_incidents, last_update}` | — | F5.1 |
 | M1 | `POST /facade_pass` `{camera_id, count}` · `GET /stats/facade?date=` | 📷 / — | F1.4 |

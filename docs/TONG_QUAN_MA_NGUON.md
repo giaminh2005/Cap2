@@ -128,6 +128,7 @@ Chạy từ **thư mục gốc dự án** (có `backend/`, `frontend/`, `ai_engi
 | `--tracker` | `ai_engine/trackers/smartcau_botsort.yaml` | Cấu hình bộ theo dõi |
 | `--face-detector` | `yunet` | Bộ tìm mặt của DeepFace (`retinaface`, `mtcnn`, `opencv`...) |
 | `--no-face-gate` | tắt | Tắt cổng chất lượng mặt |
+| `--no-stream` | tắt | Không gửi hình trực tiếp lên trang Camera trên web (tiết kiệm mạng) |
 
 Phím trên cửa sổ camera: **L** / **l** / **1** / **K** hoặc **chuột phải** = kẻ lại vạch (click 2 đầu vạch rồi 1 điểm phía cầu); **R** = vạch mặc định; **Q** / **Esc** = thoát.
 
@@ -312,7 +313,10 @@ Mỗi chức năng ghi: **làm gì → quy tắc → tệp code → API → bả
 - **Mất tín hiệu:** đọc khung lỗi → `CAMERA_LOST`, thử mở lại mỗi 3 giây → `CAMERA_RESTORED`.
 - **Nhịp tim:** mỗi 5 giây `POST /bridge/heartbeat` (nguồn, fps, vạch, tên máy, có gửi cảnh báo, có nhận diện). Quá 30 giây không có → coi là mất (`bridge.OFFLINE_AFTER_SEC`).
 - **Lỗi OpenCV 5 / bản headless:** `OPENCV_FIX_MSG` in cách sửa.
-- **Web:** **Camera** (`frontend/views/camera.py`), tự cập nhật 5 giây.
+- **Hình trực tiếp trên web:** `camera_bridge.Net.stream_frame` giao khung hình đã vẽ HUD cho luồng `net-stream`; luồng này thu về rộng tối đa 960 px, nén JPEG (chất lượng 70) và gửi `POST /bridge/stream_frame/<id>` khoảng 12 ảnh/giây. Việc nén chạy ở luồng riêng nên camera không chậm đi. Tắt bằng `--no-stream`.
+  - Backend (`bridge.py`): giữ ảnh mới nhất mỗi camera trong bộ nhớ (`_FRAMES`, không ghi ổ đĩa, tối đa `STREAM_MAX_BYTES` = 2 MB/ảnh). Ảnh cũ hơn `STREAM_FRESH_SEC` = 5 giây coi như không có (`has_stream = false` trong `/bridge/cameras`).
+  - `GET /bridge/stream/<id>?t=<token>`: luồng MJPEG, chỉ gửi khi có ảnh mới, dừng khi người xem đóng trang. `GET /bridge/stream_snapshot/<id>?t=<token>`: 1 ảnh. Chỉ **quản lý / quản trị** xem được (`STREAM_VIEW_ROLES`); token đăng nhập đặt trên URL vì thẻ `<img>` không gửi được header.
+- **Web:** **Camera** (`frontend/views/camera.py`): chọn Song song / Chân cầu 1 / Chân cầu 2; mỗi thẻ có tên chân cầu, nhãn trạng thái, khung hình trực tiếp (nhãn "Trực tiếp", nút "Mở toàn màn hình") hoặc khung trống kèm lý do (chưa kết nối / mất tín hiệu / không phát hình), bảng thông số. Trạng thái tự cập nhật 5 giây; thẻ `<img>` giữ nguyên nên luồng hình không bị mở lại. CSS chung: `.sc-live`, `.sc-specs` trong `common.py`.
 
 ### 5.9 Tổng quan thời gian thực (M6 · F5.1)
 - **Trang:** `frontend/views/tong_quan.py` (fragment 2 giây): sơ đồ cầu (`common.bridge_svg`, chấm = người), mức cảnh báo, sức chứa, tốc độ vào/ra 5 phút, dự kiến bao lâu đầy, thời gian chờ, diễn biến 60 phút, dự báo lượt vào trong ngày, nhận định tự động, sự cố đang mở, camera.
@@ -501,7 +505,7 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | `views/co_cau_khach.py` | Chọn ngày; KPI; biểu đồ giới tính, nhóm tuổi, nguồn khách, theo giờ |
 | `views/lich_su.py` | Lọc theo ngày / giới tính / nhóm tuổi / nguồn khách; bảng hồ sơ; KPI |
 | `views/bao_cao.py` | Mục 5.16: chọn kỳ Ngày / Tuần / Tháng / Năm / Tùy chọn, tùy chỉnh và lập PDF, Excel, KPI, biểu đồ, biểu đồ nhiệt, báo cáo tuần, báo cáo ngày |
-| `views/camera.py` | Thẻ 2 camera: trạng thái, fps, máy, nguồn, vạch, gửi cảnh báo, nhận diện, chạy từ |
+| `views/camera.py` | Mục 5.8: hình trực tiếp + trạng thái + thông số 2 camera; `stream_url`, `status`, `video`, `specs`, `board` (fragment 5 giây) |
 | `views/cau_hinh.py` | Mục 5.18 |
 | `views/nguoi_nhan.py` | Mục 5.14 |
 | `views/tai_khoan.py` | Tạo tài khoản, đổi vai trò, khóa / mở, đặt lại mật khẩu |
@@ -549,7 +553,9 @@ Quyền: **cam** = header `X-API-Key` (chỉ khi máy chủ đặt `SMARTCAU_API
 | POST /bridge/crossing | bridge.py::record_crossing | cam | camera_bridge.py, simulate_bridge.py |
 | POST /bridge/heartbeat | bridge.py::heartbeat | cam | camera_bridge.py |
 | GET /bridge/state | bridge.py::bridge_state | — | camera, luot_qua_cau.py |
-| GET /bridge/cameras | bridge.py::cameras | — | camera.py, tong_quan.py, messages.py |
+| GET /bridge/cameras | bridge.py::cameras (có `has_stream`) | — | camera.py, tong_quan.py, messages.py |
+| POST /bridge/stream_frame/{id} | bridge.py::upload_stream_frame | cam | camera_bridge.py (`Net._streamer`) |
+| GET /bridge/stream/{id}?t= · /bridge/stream_snapshot/{id}?t= | bridge.py::live_stream, stream_snapshot | manager (token trên URL) | camera.py |
 | POST /bridge/reset | bridge.py::reset_bridge | manager | luot_qua_cau.py |
 | GET /bridge/stats | bridge.py::bridge_stats | — | luot_qua_cau.py |
 | POST /occupancy | counting.py::create_occupancy | cam | camera_bridge.py (camera 1) |
@@ -625,6 +631,8 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 | Nguồn khách sai | Ước lượng thô từ chủng tộc | `visitor_profiler.py::REGION_TO_ORIGIN`, `ORIGIN_MIN_SHARE`, `region_mapping.py` |
 | Camera giật / chậm, `AI xx ms/khung` cao | Máy yếu | `--imgsz 480`, `--max-width`, `--no-origin`; `camera_bridge.py` vòng lặp; `camera_ui.py::TextLayer.render` |
 | Hình trễ so với thực tế | Bộ đệm webcam | `camera_backend.py::LatestFrameReader` |
+| Trang Camera không có hình / "Không nhận được hình" | Camera chạy với `--no-stream`, máy xem chưa mở cổng 8000, hoặc ảnh cũ hơn 5 giây | `bridge.py::_fresh_frame`, `camera_bridge.Net._streamer`, tường lửa cổng 8000 (`docs/TRIEN_KHAI_NHIEU_MAY.md`) |
+| Hình trên web báo 401 / 403 | Phiên đăng nhập hết hạn, hoặc tài khoản người trực (chỉ quản lý / quản trị xem được) | `bridge.py::_require_viewer`, `STREAM_VIEW_ROLES` |
 | Không mở được webcam USB / camera điện thoại | Sai số webcam, khác Wi-Fi, app chưa Start | `python tools/tim_camera.py`, `camera_backend.resolve_source`, `docs/CAMERA_NGOAI.md` |
 | Đếm sai vào / ra, đếm 2 lần | Vạch, hướng phía cầu, tracker mất ID | `line_crossing.py::LineCrossingCounter.update`, `camera_bridge.py::draw_line_setup`, `trackers/smartcau_botsort.yaml`, `--conf` |
 | Bấm phím kẻ vạch không ăn | Chưa click vào cửa sổ camera | `camera_bridge.py` (xử lý phím cuối vòng lặp, `on_main_mouse`) |
@@ -719,7 +727,7 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 
 ## 11. Kiểm thử
 
-Chạy: `pytest -q` (70 test). `tests/test_api.py` dùng CSDL trong bộ nhớ và thay `notify.deliver*` bằng hàm ghi vào danh sách `SENT` / `DOCS` (không gửi Telegram thật).
+Chạy: `pytest -q` (71 test). `tests/test_api.py` dùng CSDL trong bộ nhớ và thay `notify.deliver*` bằng hàm ghi vào danh sách `SENT` / `DOCS` (không gửi Telegram thật).
 
 | Tệp test | Kiểm tra |
 |---|---|
