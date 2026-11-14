@@ -54,9 +54,25 @@ def _tickets_missing(db, date_s: str) -> bool:
     return db.query(TicketCount.id).filter(TicketCount.date == date_s).first() is None
 
 
-def pdf_of(rep: DailyReport) -> bytes:
+_PDF_KEYS = ("by_day", "by_month", "by_hour", "time_slots", "demographics", "alerts", "kpis", "date_from", "date_to")
+
+
+def pdf_of(rep: DailyReport, db=None) -> bytes:
+    """PDF bao cao ngay. Ban luu trong CSDL thieu muc (lap tu phien ban cu, hoac du lieu mau)
+    -> lap lai tu du lieu goc cua ngay do de khop mau PDF hien tai."""
     from .report_export import to_pdf
-    return to_pdf(json.loads(rep.data))
+    try:
+        data = json.loads(rep.data or "{}")
+    except ValueError:
+        data = {}
+    if not all(k in data for k in _PDF_KEYS):
+        day = datetime.strptime(rep.date, "%Y-%m-%d")
+        if db is not None:
+            data = _summary(db, day)
+        else:
+            with SessionLocal() as s:
+                data = _summary(s, day)
+    return to_pdf(data)
 
 
 def _deliver(report_id: int, text: str, pdf: bytes, filename: str):
