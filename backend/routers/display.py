@@ -28,7 +28,7 @@ STALE_SEC = 30
 def display_state(db: Session = Depends(get_db)):
     from .admin import is_open_now
     from .bridge import _get_bridge_state, _roll_day
-    from .insights import wait_bucket, wait_bucket_en, live
+    from .insights import wait_now
 
     cfg = get_config(db)
     latest = db.query(OccupancySnapshot).order_by(OccupancySnapshot.timestamp.desc()).first()
@@ -37,7 +37,7 @@ def display_state(db: Session = Depends(get_db)):
     st = _get_bridge_state(db)
     _roll_day(st, local_now().strftime("%Y-%m-%d"))
     db.commit()
-    lv = live(db)
+    lv = wait_now(db)
     warning = min(cfg.alert_threshold, max(1, round(cfg.alert_threshold * 0.75)))
     return {
         "onbridge": get_state(db).current_count,

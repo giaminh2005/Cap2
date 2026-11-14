@@ -310,8 +310,7 @@ class DemographicsEngine:
             print(
                 "[DemographicsEngine] DA BAT tinh nang uoc luong KHU VUC (Phase 3).\n"
                 "  - Day la UOC LUONG THO, CHI phan nhom rong, KHONG xac dinh quoc tich/chung toc ca nhan.\n"
-                "  - Du lieu CHI duoc tong hop theo gio (xem RegionStat trong backend/),\n"
-                "    KHONG gan nhan khu vuc cho tung ho so/track_id ca nhan.\n"
+                "  - Chi luu nhom rong Trong nuoc/chau A - Quoc te, khong luu anh hay dac trung khuon mat.\n"
                 "  - Xem day du nguyen tac su dung trong region_mapping.py."
             )
 

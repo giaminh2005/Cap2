@@ -18,9 +18,6 @@ CHAY (tu THU MUC GOC du an, khong phai tu trong backend/):
 
 Mo http://127.0.0.1:8000/docs de xem/test toan bo API (nhom theo F1-F6).
 
-Moi endpoint giu NGUYEN duong dan nhu api_server.py cu -> camera_in.py,
-camera_out.py va trang admin KHONG can sua gi.
-
 LUU Y: database o backend/smartcau.db (tu tao). Lan dau chay tu tao tai
 khoan admin / admin123. Cot moi trong cac bang cu duoc tu bo sung khi khoi dong.
 """

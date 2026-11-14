@@ -116,7 +116,7 @@ def write_report(path_base, mode, rows, summary, model_name):
         w.writeheader()
         w.writerows(rows)
     v = summary["verdict"]
-    lines = [f"# Kết quả đo sai số đếm người (NFR-02)", "",
+    lines = ["# Kết quả đo sai số đếm người (NFR-02)", "",
              f"- Thời điểm: {datetime.now():%H:%M %d/%m/%Y} · mô hình: `{model_name}` · chế độ: "
              f"{'lượt qua vạch' if mode == 'crossing' else 'số người trong khung hình'}",
              f"- Số video: {v['n_videos']} (Sprint 0 yêu cầu ≥ 3 video mật độ khác nhau)", "",

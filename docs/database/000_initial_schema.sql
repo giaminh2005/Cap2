@@ -169,12 +169,3 @@ CREATE TABLE IF NOT EXISTS daily_reports (
   delivery      VARCHAR
 );
 CREATE UNIQUE INDEX IF NOT EXISTS ix_daily_reports_date ON daily_reports (date);
--- Bảng của camera đời cũ (camera_in/out.py), ngoài phạm vi MVP
-CREATE TABLE IF NOT EXISTS region_stats (
-  id     INTEGER PRIMARY KEY,
-  date   VARCHAR,
-  hour   INTEGER,
-  region VARCHAR,
-  count  INTEGER DEFAULT 0
-);
-CREATE INDEX IF NOT EXISTS ix_region_stats_date ON region_stats (date);

@@ -13,9 +13,9 @@
 > Hãy chỉ ra nguyên nhân và đưa đoạn code sửa, giữ nguyên quy ước của dự án (mục 10).
 > ```
 
-Phiên bản tài liệu: sau PR #9 (11/2026). Tài liệu khác trong `docs/`: `GHI_CHU_GIAO_DIEN.md` (hướng dẫn và mã yêu cầu đã gỡ khỏi web), `TRIEN_KHAI_NHIEU_MAY.md` (chạy nhiều máy), `CAMERA_NGOAI.md` (webcam USB, điện thoại làm camera), `AI_CAI_THIEN.md` (độ chính xác AI), `API_CONTRACT.md`, `PHAN_CONG.md`.
+Phiên bản tài liệu: sau đợt dọn mã 13/11/2026. Tài liệu khác trong `docs/`: `GHI_CHU_GIAO_DIEN.md` (hướng dẫn và mã yêu cầu đã gỡ khỏi web), `TRIEN_KHAI_NHIEU_MAY.md` (chạy nhiều máy), `CAMERA_NGOAI.md` (webcam USB, điện thoại làm camera), `AI_CAI_THIEN.md` (độ chính xác AI), `API_CONTRACT.md`, `PHAN_CONG.md`.
 
-Các thay đổi lớn theo thời gian: PR #4–#5 (7 module, LED Linh Thân, nhiều máy) · #6 (LED hai đầu cầu, nhận diện bật sẵn, dọn web) · #7 (Telegram 2 chiều, tự động hóa, loại tin, camera bớt lag) · #8 (PDF hành chính có logo chìm + biểu đồ, kỳ năm / tùy chọn, đối chiếu vé theo ngày, AI Nam/Nữ cắt mặt theo keypoint) · #9 (webcam USB / điện thoại làm camera).
+Các thay đổi lớn theo thời gian: PR #4–#5 (7 module, LED Linh Thân, nhiều máy) · #6 (LED hai đầu cầu, nhận diện bật sẵn, dọn web) · #7 (Telegram 2 chiều, tự động hóa, loại tin, camera bớt lag) · #8 (PDF hành chính có logo chìm + biểu đồ, kỳ năm / tùy chọn, đối chiếu vé theo ngày, AI Nam/Nữ cắt mặt theo keypoint) · #9 (webcam USB / điện thoại làm camera) · dọn mã 13/11 (xóa demo cũ, camera_in/out, API `/entry` `/exit` `/region_stats`, bảng `region_stats`; LED nhẹ hơn ~5 lần).
 
 ---
 
@@ -140,7 +140,7 @@ Phím trên cửa sổ camera: **L** / **l** / **1** / **K** hoặc **chuột ph
 | `SMARTCAU_API_KEY` | backend/security.py, camera, tools | Khóa camera gửi số liệu (rỗng = không cần) |
 | `ADMIN_API_KEY` | backend/security.py | Khóa quản trị qua header `X-Admin-Key` (cho script) |
 | `SMARTCAU_API` | frontend/common.py, ai_engine, tools | Địa chỉ backend mà web / camera gọi |
-| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | backend/notify.py, ai_engine/telegram_alert.py | Token bot (ưu tiên hơn token lưu trong CSDL); chat dự phòng khi chưa có người nhận |
+| `TELEGRAM_BOT_TOKEN`, `TELEGRAM_CHAT_ID` | backend/notify.py | Token bot (ưu tiên hơn token lưu trong CSDL); chat dự phòng khi chưa có người nhận |
 | `SMARTCAU_WEB_URL` | backend/notify.py | Thêm nút "🖥 Mở trang quản lý" vào tin Telegram |
 | `SMARTCAU_SELF_URL` | backend/sheets_auto.py | Backend tự gọi API của chính nó khi đồng bộ Sheets (mặc định `http://127.0.0.1:8000`) |
 | `SMARTCAU_DISABLE_SCHEDULER` | backend/daily_report.py, telegram_bot.py | `1` = tắt luồng nền (dùng khi chạy test) |
@@ -149,8 +149,7 @@ Phím trên cửa sổ camera: **L** / **l** / **1** / **K** hoặc **chuột ph
 | `SMARTCAU_FONT`, `SMARTCAU_FONT_BOLD` | backend/report_export.py, ai_engine/camera_ui.py | Đường dẫn font .ttf tiếng Việt (thường / đậm) cho PDF và chữ trên camera |
 | `SMARTCAU_ORG_PARENT`, `SMARTCAU_ORG_NAME`, `SMARTCAU_ORG_PLACE` | backend/report_export.py | Tên cơ quan chủ quản, đơn vị lập báo cáo, địa danh trên PDF (mặc định: Trung tâm QLBT DSVH Hội An / Bộ phận vận hành hệ thống SmartCau AI / Hội An) |
 | `SMARTCAU_FACE_DETECTOR` | ai_engine/age_gender_estimator.py, camera_bridge.py | Bộ tìm mặt mặc định |
-| `SMARTCAU_BUZZER_WEBHOOK` | ai_engine/telegram_alert.py | URL gọi khi Đỏ (còi / đèn ngoài, tùy chọn) |
-| `SMARTCAU_ENABLE_REGION`, `SMARTCAU_SOLO_DEMO` | ai_engine/camera_in.py (cũ) | Chỉ cho camera cũ |
+| `SMARTCAU_BUZZER_WEBHOOK` | ai_engine/buzzer.py | URL gọi khi Đỏ (còi / đèn ngoài, tùy chọn) |
 
 **Tệp cấu hình sinh ra khi chạy (không đưa lên GitHub, có trong `.gitignore`):**
 
@@ -174,8 +173,8 @@ Cap2/
 │   ├── main.py                   tạo app, gắn router, mount /led, khởi động luồng nền, /health
 │   ├── database.py               engine SQLAlchemy, get_db, ensure_schema (tự thêm cột mới)
 │   ├── models.py                 bảng dùng chung: VisitEvent, OccupancySnapshot, OccupancyState, SystemEvent,
-│   │                             RegionStat, SystemConfig, User, AuthToken, AuditLog; get_state, get_config, log_audit
-│   ├── schemas.py                Pydantic đầu vào: VisitEventIn, OccupancyIn, SystemEventIn, RegionStatIn
+│   │                             SystemConfig, User, AuthToken, AuditLog; get_state, get_config, log_audit
+│   ├── schemas.py                Pydantic đầu vào: VisitEventIn, OccupancyIn, SystemEventIn
 │   ├── security.py               khóa camera, mật khẩu băm, phiên đăng nhập, phân quyền
 │   ├── timeutil.py               giờ Việt Nam ↔ UTC
 │   ├── notify.py                 gọi Telegram Bot API: gửi tin HTML, nút bấm, gửi tệp PDF
@@ -211,32 +210,27 @@ Cap2/
 │   ├── camera_backend.py         mở webcam đúng hệ điều hành; LatestFrameReader (đọc khung mới nhất)
 │   ├── camera_ui.py              vẽ khung người, chữ tiếng Việt (TextLayer), ô thông tin
 │   ├── line_crossing.py          vạch kẻ: LineCrossingCounter, foot_point, FacadeCounter (lượt mặt tiền)
-│   ├── crowd_counter.py          ngưỡng (CameraThresholds), AlertLevelTracker (Vàng/Đỏ có thời gian), CrowdCounter (cũ)
+│   ├── crowd_counter.py          ngưỡng (CameraThresholds), AlertLevelTracker (Vàng/Đỏ có thời gian)
 │   ├── group_detector.py         phát hiện đoàn khách
 │   ├── visitor_profiler.py       cổng chất lượng mặt, AsyncEngine (DeepFace nền), VisitorProfiler (hồ sơ khách)
 │   ├── demographics_engine.py    bỏ phiếu theo thời gian cho giới tính / tuổi / khu vực
 │   ├── age_gender_estimator.py   nhận diện giới tính/tuổi (InsightFace ONNX mặc định, fallback DeepFace)
 │   ├── region_mapping.py         nhóm chủng tộc DeepFace → nhóm khu vực
-│   ├── telegram_alert.py         trigger_buzzer_signal (còi ngoài) + gửi Telegram kiểu cũ
+│   ├── buzzer.py                 trigger_buzzer_signal (còi / đèn ngoài khi Đỏ, tùy chọn)
 │   ├── trackers/smartcau_botsort.yaml  cấu hình BoT-SORT
 │   ├── models/                   trọng số mô hình tải cục bộ (buffalo_s/genderage.onnx, deepface weights)
-│   ├── camera_in.py, camera_out.py     camera kiểu CŨ (1 camera vào, 1 camera ra) — không dùng nữa, giữ tham khảo
 ├── tools/                        CÔNG CỤ
 │   ├── kiem_tra_mang.py          kiểm tra kết nối nhiều máy
 │   ├── simulate_bridge.py        giả lập khách qua 2 chân cầu
-│   ├── seed_demo_data.py         tạo dữ liệu demo qua API
 │   ├── google_sheets_sync.py     đồng bộ sang Google Sheets (dùng bởi web và sheets_auto)
 │   ├── eval_counting.py          đo độ chính xác đếm (NFR-02)
 │   ├── eval_demographics.py      đo độ chính xác giới tính / tuổi (FR-09, NFR-08), học hệ số tuổi
-│   ├── data_simulator.py, generate_dashboard.py, demo_run.py   bản demo cũ (dashboard HTML tĩnh)
 ├── tests/                        pytest (mục 11)
 ├── media/                        TỆP GỐC nhóm gửi: mascot/linh_than, mascot/linh_khuyen, phong_nen, tai_lieu (BRD, BFD, BPMN, Sprint0)
 ├── docs/                         tài liệu hệ thống
 │   ├── database/                 lược đồ CSDL chuẩn hóa (000_initial_schema.sql, 001_proposed_constraints.sql, README.md)
-│   ├── lich_su/                  tài liệu tiến độ và các giai đoạn nâng cấp
 │   ├── TONG_QUAN_MA_NGUON.md, AI_CAI_THIEN.md, GHI_CHU_GIAO_DIEN.md, CAMERA_NGOAI.md, TRIEN_KHAI_NHIEU_MAY.md, API_CONTRACT.md, PHAN_CONG.md
-├── legacy_demos/                 demo đầu tiên (không dùng)
-├── sample_data/                  dữ liệu mẫu CSV, ảnh thử, sample_day.sql (dữ liệu 1 ngày vận hành chuẩn hóa)
+├── sample_data/                  sample_day.sql (dữ liệu 1 ngày vận hành chuẩn hóa)
 ├── requirements.txt, pytest.ini, .streamlit/config.toml, yolov8n.pt, yolov8n-pose.pt
 ```
 
@@ -272,7 +266,7 @@ Mỗi chức năng ghi: **làm gì → quy tắc → tệp code → API → bả
   - `pop_notification`: Vàng gửi khi chuyển từ OK lên; Đỏ gửi ngay khi vào, nhắc lại mỗi 180 giây; mỗi loại không lặp trong 3 phút.
 - **Chỉ camera 1** tính mức và gửi `POST /occupancy` (mỗi 2 giây) và `POST /system_events` (`WARNING`, `CRITICAL_ALERT`, `CRITICAL_CLEARED`). Ngưỡng đọc từ `/config` mỗi 15 giây (`Net._poller`).
 - **Gửi tin:** `backend/routers/alerts.py::create_system_event`. Tin Vàng, đoàn khách, camera có lại chỉ gửi **trong giờ mở cửa** (`NOTIFY_IN_HOURS`, `admin.is_open_now`); Đỏ và mất camera gửi **mọi lúc** (`ALWAYS_NOTIFY`).
-- **Tệp liên quan:** `ai_engine/camera_bridge.py` (phần `tracker.update`, `pop_notification`, `trigger_buzzer_signal`), `ai_engine/telegram_alert.py::trigger_buzzer_signal` (còi ngoài), `backend/routers/alerts.py`, `backend/messages.py::event_message`, `backend/notify.py`.
+- **Tệp liên quan:** `ai_engine/camera_bridge.py` (phần `tracker.update`, `pop_notification`, `trigger_buzzer_signal`), `ai_engine/buzzer.py::trigger_buzzer_signal` (còi ngoài), `backend/routers/alerts.py`, `backend/messages.py::event_message`, `backend/notify.py`.
 - **Test:** `tests/test_crowd_counter.py`, `tests/test_api.py::test_incident_lifecycle`, `test_rich_telegram_messages_include_live_status`.
 
 ### 5.5 Sự cố quá tải: mở, xác nhận, đóng, báo sai (M3 · F2.4)
@@ -461,7 +455,7 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | `main.py` | `app = FastAPI(...)`, `include_router` cho 10 router, `app.mount("/led", StaticFiles(led_display))`, `ensure_schema()`, `accounts.ensure_default_admin`, `admin.load_telegram_token`, `@startup _start_background_jobs` (gọi `daily_report.start_scheduler()` và `telegram_bot.start()`), `GET /health` | Thêm router mới phải import và `include_router` ở đây |
 | `database.py` | `DATABASE_URL`, `engine`, `SessionLocal`, `Base`, `get_db()`, `ensure_schema()` | `ensure_schema` tự `ALTER TABLE ADD COLUMN` cho cột mới → tệp `.db` cũ vẫn chạy. Không tự đổi kiểu / xóa cột |
 | `models.py` | Bảng chung (mục 8), `ROLES`, `get_state` (tạo dòng `occupancy_state` id=1), `get_config` (tạo `system_config` mặc định 20 người, 07:00–21:30), `log_audit` | |
-| `schemas.py` | `VisitEventIn`, `OccupancyIn`, `SystemEventIn` (event_type, count, message, camera_id), `RegionStatIn` | |
+| `schemas.py` | `VisitEventIn`, `OccupancyIn`, `SystemEventIn` (event_type, count, message, camera_id) | |
 | `security.py` | `API_KEY`, `ADMIN_API_KEY`, `hash_password`, `verify_password`, `require_api_key` (header `X-API-Key`), `Principal`, `current_principal`, `require_roles`, `require_staff`, `require_manager`, `require_admin` | Lỗi 401 / 403 đều xuất phát ở đây |
 | `timeutil.py` | `UTC_OFFSET_HOURS`, `LOCAL_UTC_OFFSET`, `utcnow`, `local_now`, `to_local`, `local_day_range_utc`, `parse_day`, `iso` | CSDL lưu **UTC**; thống kê theo **giờ Việt Nam** |
 | `notify.py` | `telegram_token`, `set_db_token`, `token_source`, `telegram_api(method, **params)` (timeout HTTP = 10 + timeout Telegram), `keyboard`, `_send_telegram`, `deliver`, `deliver_async`, `deliver_document`, `WEB_URL` | Không có người nhận → dùng `TELEGRAM_CHAT_ID` |
@@ -476,14 +470,14 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 |---|---|---|
 | `accounts.py` | (User, AuthToken, AuditLog ở models.py) | `ensure_default_admin`, `login`, `logout`, `me`, `change_password`, `list_users`, `create_user`, `update_user`, `audit_log`; `TOKEN_HOURS = 12` |
 | `bridge.py` | `BridgeState`, `BridgeCrossing`, `CameraStatus` | `record_crossing`, `heartbeat`, `cameras`, `bridge_state`, `reset_bridge`, `bridge_stats`; `_get_bridge_state`, `_roll_day`, `_state_json`, `_LOCK`, `OFFLINE_AFTER_SEC = 30` |
-| `counting.py` | `FacadePass` | `person_entry`, `person_exit` (API cũ `/entry` `/exit`), `create_occupancy`, `occupancy_stats`, `current_stats`, `occupancy_history`, `facade_pass`, `facade_stats` |
+| `counting.py` | `FacadePass` | `create_occupancy`, `occupancy_stats`, `current_stats`, `occupancy_history`, `facade_pass`, `facade_stats` |
 | `alerts.py` | `Incident` | `EVENT_LABELS`, `TOPIC_OF`, `ALWAYS_NOTIFY`, `NOTIFY_IN_HOURS`, `buttons`, `_close`, `create_system_event`, `list_system_events`, `list_incidents`, `ack_incident`, `acknowledge`, `close_incident`, `mark_false_alarm` |
-| `demographics.py` | (VisitEvent, RegionStat ở models.py) | `AGE_ORDER`, `ORIGINS`, `create_visit_event`, `list_visit_events` (lọc giới tính / tuổi / nguồn / ngày), `summarize_visits` (bỏ "không xác định" khỏi tỷ lệ), `demographics_summary`, `bump_region_stat`, `region_stats` |
+| `demographics.py` | (VisitEvent ở models.py) | `AGE_ORDER`, `ORIGINS`, `create_visit_event`, `list_visit_events` (lọc giới tính / tuổi / nguồn / ngày), `summarize_visits` (bỏ "không xác định" khỏi tỷ lệ), `demographics_summary` |
 | `tickets.py` | `TicketCount` | `_validate`, `_upsert`, `add_ticket_count`, `add_bulk`, `list_tickets`, `delete_ticket`, `reconciliation` (1 ngày, theo giờ), `reconciliation_range` (nhiều ngày, theo ngày), `_rate` |
 | `reports.py` | — | `HANDLE_TARGET_SEC = 180`, `TIME_SLOTS`, `PERIODS`, `MAX_CUSTOM_DAYS`, `period_range`, `report_summary` (trả thêm `by_month`, `tickets`, `capacity`, `previous`), `heatmap`, `list_daily`, `daily_pdf`, `resend_daily`, `weekly_pdf`, `send_weekly_now` |
-| `insights.py` | — | `WEEKS = 8`, `TREND_MIN = 5`, `_crossings_between`, `_hourly_profile`, `wait_bucket`, `wait_bucket_en`, `live`, `summary` |
+| `insights.py` | — | `WEEKS = 8`, `TREND_MIN = 5`, `_crossings_between`, `_hourly_profile` (nhớ kết quả theo ngày + số lượt cũ, `_PROFILE_CACHE`), `wait_bucket`, `wait_bucket_en`, `wait_now` (phần nhẹ: tốc độ 5 phút, dự kiến đầy, thời gian chờ — đếm bằng `COUNT`), `live` (= `wait_now` + dự báo), `summary` |
 | `admin.py` | `Recipient` | `CHANNELS`, `RETENTION_MIN_DAYS`, `TOPICS`, `PRESETS`, `_topics_of`, `active_recipients`, `is_open_now`, `read_config`, `update_config`, `recipient_topics`, CRUD người nhận, `test_recipient`, `privacy_summary`, `purge`, `load_telegram_token`, `telegram_status`, `set_telegram_token` (kiểm tra `getMe`), `clear_telegram_token`, `telegram_chats` |
-| `display.py` | — | `display_state` (`STALE_SEC = 30`) |
+| `display.py` | — | `display_state` (`STALE_SEC = 30`; dùng `insights.wait_now`, không tính dự báo, vì bảng LED gọi mỗi giây) |
 
 ### 6.3 backend/led_display/led.js (theo thứ tự trong tệp)
 - `CONFIG`: `apiBase`, `pollMs`, `offlineAfterMs`, `dayStart/dayEnd`, `sceneMode`, `altEveryMin`, `altDurationSec`, `tourSceneSec`, `tourFollowsClock`, `crossfadeMs`, `scenes`, `clock`, `ends`, `names`, `clips`, `timing`, `lines`, `sign`.
@@ -498,7 +492,7 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | Tệp | Nội dung |
 |---|---|
 | `app.py` | `set_page_config`; chưa đăng nhập → `st.navigation([login_page], position="hidden")` và ẩn thanh bên; `must_change_password` → trang đổi mật khẩu; `PAGES` + vai trò; `st.logo`; thanh bên: tên, vai trò, "Đã kết nối / Mất kết nối máy chủ" (`api_is_up`), Mật khẩu, Đăng xuất, `alert_watcher()` |
-| `common.py` | `API_BASE`, `public_api_base`, bảng màu `C`, `COLORS`, `SERIES`, `GENDER_VI`, `ORIGIN_VI`, `AGE_ORDER`, `ROLE_VI`, `STATUS_META`, `EVENT_TONE`; CSS `_THEME_CSS` (đã bỏ dòng trống — **dòng trống trong `<style>` làm CSS hiện ra thành chữ**); `apply_theme`, `page_header`, `section`, `kpi`, `kpi_row`, `badge`, `status_badge`, `note`, `alert_box`, `empty`, `capacity_bar`, `style_fig`; thời gian `utc_offset_hours`, `to_local`, `fmt_time`, `fmt_duration`, `fmt_mmss`, `local_now`, `local_today`; API `ApiError`, `_headers`, `_call`, `api_get`, `api_get_bytes`, `api_post`, `api_put`, `api_delete`, `safe_get` (lỗi thì hiện hộp đỏ, trả None), `api_is_up`; phiên `current_user`, `has_role`, `restore_session`, `login_page`, `change_password_form`, `logout`; `bridge_svg`, `insight_list`, `alert_watcher` |
+| `common.py` | `API_BASE`, `public_api_base`, bảng màu `C`, `COLORS`, `SERIES`, `GENDER_VI`, `ORIGIN_VI`, `AGE_ORDER`, `ROLE_VI`, `STATUS_META`; CSS `_THEME_CSS` (đã bỏ dòng trống — **dòng trống trong `<style>` làm CSS hiện ra thành chữ**); `apply_theme`, `page_header`, `section`, `kpi`, `kpi_row`, `badge`, `status_badge`, `note`, `alert_box`, `empty`, `style_fig`; thời gian `utc_offset_hours`, `to_local`, `fmt_time`, `fmt_duration`, `fmt_mmss`, `local_now`, `local_today`; API `ApiError`, `_headers`, `_call`, `api_get`, `api_get_bytes`, `api_post`, `api_put`, `api_delete`, `safe_get` (lỗi thì hiện hộp đỏ, trả None), `api_is_up`; phiên `current_user`, `has_role`, `restore_session`, `login_page`, `change_password_form`, `logout`; `bridge_svg`, `insight_list`, `alert_watcher` |
 | `views/tong_quan.py` | Mục 5.9 |
 | `views/truc_ca.py` | Mục 5.5 |
 | `views/bang_led.py` | 2 iframe LED (`?dau=1`, `?dau=2`), chọn Song song / Đầu cầu 1 / Đầu cầu 2, nút toàn màn hình / debug; `_iframe` = `st.iframe` hoặc `components.iframe` |
@@ -518,17 +512,16 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | Tệp | Thành phần chính |
 |---|---|
 | `camera_bridge.py` | Hằng: `API_BASE`, `STATE_POLL_SEC=1`, `CONFIG_POLL_SEC=15`, `REPORT_SEC=2`, `HEARTBEAT_SEC=5`, `ALERT_REPEAT_SEC=180`, `RECONNECT_SEC=3`, `OPENCV_FIX_MSG`, `MACHINE`, `LEVEL_VI`, `LEVEL_BGR`. Hàm: `_post`, `_get` (gọi HTTP đồng bộ, timeout 2 giây), lớp `Net` (gửi / đọc nền), `_line_path`, `load_line`, `draw_line_setup`, `draw_line_overlay`, `draw_hud`, `parse_args`, `main` (mở camera `open_src`, nạp DeepFace, tạo `VisitorProfiler`, vòng lặp: đọc khung → thu nhỏ → YOLO track → từng người: vạch / mặt tiền / nhóm / hồ sơ → gửi sự kiện → HUD → phím) |
-| `camera_backend.py` | `_pick_backend_for_platform` (Windows `CAP_DSHOW`, Linux `CAP_V4L2`, macOS `CAP_AVFOUNDATION`), `PHONE_APPS`, `resolve_source` (gõ tắt `phone:`/`droidcam:`/IP), `is_network_source`, `open_camera` (webcam xin 1280x720; luồng mạng dùng `CAP_FFMPEG`), `LatestFrameReader`, `parse_camera_source` (cho camera cũ) |
-| `camera_ui.py` | `draw_person_box`, `draw_info_panel`, `draw_status_bar`, `draw_capacity_banner`, `draw_gate_banner`, `draw_countdown`, font `_FONT_CANDIDATES`, `vietnamese_text_supported`, `TextLayer` (`text`, `measure`, `render`), `panel_lines` |
+| `camera_backend.py` | `_pick_backend_for_platform` (Windows `CAP_DSHOW`, Linux `CAP_V4L2`, macOS `CAP_AVFOUNDATION`), `PHONE_APPS`, `resolve_source` (gõ tắt `phone:`/`droidcam:`/IP), `is_network_source`, `open_camera` (webcam xin 1280x720; luồng mạng dùng `CAP_FFMPEG`), `LatestFrameReader` |
+| `camera_ui.py` | `draw_person_box`, font `_FONT_CANDIDATES`, `vietnamese_text_supported`, `TextLayer` (`text`, `measure`, `render`), `panel_lines` |
 | `line_crossing.py` | `LineCrossingCounter` (`p1`, `p2`, `bridge_point`, `signed_distance`, `update`, `save`, `load`), `foot_point`, `FacadeCounter` (`update`, `mark_crossed`, `collect`) |
-| `crowd_counter.py` | `CameraThresholds`, `AlertLevelTracker`, `STATUS_COLOR_BGR`, `STATUS_LABEL_VI`, `CrowdCounter` (YOLO / HOG, dùng ở bản demo cũ) |
+| `crowd_counter.py` | `CameraThresholds`, `AlertLevelTracker` |
 | `group_detector.py` | `GroupDetector(min_size=10, hold_sec=10, gap_factor=1.2)`: `_approaching`, `_largest_cluster`, `update`, `current_size` |
 | `visitor_profiler.py` | `GENDER_VI`, `ORIGIN_VI`, `REGION_TO_ORIGIN`, `ORIGIN_MIN_SHARE`, `MIN_EYE_PX=18`, `MIN_SHARPNESS=45.0`, `MIN_BOX_H=130`, `face_quality`, `QUALITY_HINT`, `extract_keypoints`, `AsyncEngine` (luồng nền, `avg_ms`), `_Track`, `VisitorProfiler` (`analyze_interval = 0.3`, `ready_interval = 1.5`, `wants`, `observe`, `mark_entered`, `mark_exited`, `step`, `origin_of`, `label`, `_save`, `_save_unknown`) |
 | `demographics_engine.py` | `CONFIDENCE_THRESHOLD=0.75`, `VOTE_WINDOW=8`, `MIN_VOTES_BEFORE_READY=4`, `_FLIP_MARGIN`, `RACE_VOTES = 4`, `TemporalVoter`, `DemographicsEngine(enable_region)` (`update`: đường keypoint hoặc dự phòng, trọng số phiếu (độ chắc − 50)/50, `last_path`; `forget`), tín hiệu dáng người (`estimate_gender_signal_from_pose`, mặc định tắt) |
 | `age_gender_estimator.py` | `DEMOGRAPHICS_BACKEND` (mặc định `insightface`, có fallback `deepface`), `_load_insightface`, `_predict_genderage_insightface`, `align_face_for_insightface` (cắt 96×96 chuẩn InsightFace với trường nhìn rộng `eye_span=0.26`, `eye_y=0.40`), `age_to_range`, `_is_fake_full_image_region`, `_apply_clahe`, `DEFAULT_DETECTOR`, `load_age_calibration`, `calibrate_age`, `_load_deepface`, `demographics_status`, `estimate_age_gender`, `estimate_demographics_from_person_box`, `FACE_SIZE`, `TTA_BELOW = 85`, `align_face_from_keypoints` (cắt mặt 224×224 cho DeepFace), `_analyze_skip`, `estimate_from_aligned_face`, `annotate_age_gender` |
-| `region_mapping.py` | `REGION_ORDER`, `REGION_LABEL_DISPLAY`, `DISCLAIMER_VI`, `nationality_to_region`, `classify_region_from_deepface_race` |
-| `telegram_alert.py` | `trigger_buzzer_signal` (gọi `SMARTCAU_BUZZER_WEBHOOK` nếu có), `send_telegram_alert` (kiểu cũ) |
-| `camera_in.py`, `camera_out.py` | Bản cũ dùng `/entry`, `/exit`, không dùng vạch. **Không sửa lỗi ở đây** nếu đang chạy `camera_bridge.py` |
+| `region_mapping.py` | `classify_region_from_deepface_race` (nhóm `race` của DeepFace → nhóm khu vực) |
+| `buzzer.py` | `trigger_buzzer_signal` (kêu "bíp" và gọi `SMARTCAU_BUZZER_WEBHOOK` nếu có) |
 
 ### 6.6 tools/
 | Tệp | Chạy | Làm gì |
@@ -536,11 +529,9 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | `kiem_tra_mang.py` | `python tools/kiem_tra_mang.py [http://IP:8000]` | `lan_ips`, `port_open`, `server_mode`, `client_mode` |
 | `tim_camera.py` | `python tools/tim_camera.py [phone:<IP> \| droidcam:<IP> \| rtsp://...]` | Dò webcam số 0–5 hoặc thử 1 luồng điện thoại; in độ phân giải, khung/giây, lệnh chạy; lưu ảnh thử vào `tools/anh_camera/` |
 | `simulate_bridge.py` | `python tools/simulate_bridge.py` | Gửi kịch bản vào / ra (`SCENARIO`) tới `/bridge/crossing` |
-| `seed_demo_data.py` | `python tools/seed_demo_data.py` | Tạo hồ sơ khách / lượt demo |
 | `google_sheets_sync.py` | gọi từ web / `sheets_auto` (hoặc `python tools/google_sheets_sync.py`) | `sync_all(api_base, sheet_id, creds_path)` |
 | `eval_counting.py` | xem `docs/AI_CAI_THIEN.md` | `count_crossings`, `count_presence`, `error_pct`, `write_report` |
 | `eval_demographics.py` | xem `docs/AI_CAI_THIEN.md` | `load_fairface`, `load_utkface`, `evaluate`, `fit_age_calibration`, `deepface_predictor` |
-| `data_simulator.py`, `generate_dashboard.py`, `demo_run.py` | bản demo cũ | Sinh dữ liệu giả và dashboard HTML tĩnh |
 
 ---
 
@@ -561,7 +552,6 @@ Quyền: **cam** = header `X-API-Key` (chỉ khi máy chủ đặt `SMARTCAU_API
 | GET /bridge/cameras | bridge.py::cameras | — | camera.py, tong_quan.py, messages.py |
 | POST /bridge/reset | bridge.py::reset_bridge | manager | luot_qua_cau.py |
 | GET /bridge/stats | bridge.py::bridge_stats | — | luot_qua_cau.py |
-| POST /entry · /exit | counting.py | cam | camera cũ |
 | POST /occupancy | counting.py::create_occupancy | cam | camera_bridge.py (camera 1) |
 | GET /stats/occupancy · /stats/current · /stats/occupancy/history | counting.py | — | tong_quan.py |
 | POST /facade_pass · GET /stats/facade | counting.py | cam / — | camera_bridge.py / web |
@@ -571,7 +561,6 @@ Quyền: **cam** = header `X-API-Key` (chỉ khi máy chủ đặt `SMARTCAU_API
 | POST /incidents/{id}/ack · /close · /false_alarm | alerts.py | staff | truc_ca.py |
 | POST /visit_events · GET /visit_events | demographics.py | cam / — | visitor_profiler.py / lich_su.py, google_sheets_sync.py |
 | GET /stats/demographics | demographics.py | — | co_cau_khach.py |
-| POST /region_stats · GET /stats/region | demographics.py | cam / — | camera cũ |
 | POST /tickets · /tickets/bulk · DELETE /tickets/{id} | tickets.py | staff | doi_chieu_ve.py |
 | GET /tickets · /tickets/reconciliation · /tickets/reconciliation_range | tickets.py | — | doi_chieu_ve.py, reports.py |
 | GET /reports/summary · /reports/heatmap · /reports/daily · /reports/daily/{d}/pdf · /reports/weekly/pdf | reports.py | — | bao_cao.py |
@@ -604,7 +593,6 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 | `incidents` | routers/alerts.py::Incident | opened_at, peak_count, alert_count, acked_at/by, note, closed_at, close_reason, closed_by, false_alarm, false_note, false_by | alerts.py |
 | `visit_events` | models.py::VisitEvent | track_id, timestamp, age, age_range, gender (Man/Woman/None), origin (Trong nuoc/Nuoc ngoai/None), camera_id | POST /visit_events |
 | `facade_passes` | routers/counting.py::FacadePass | timestamp, camera_id (mỗi dòng = 1 lượt) | POST /facade_pass |
-| `region_stats` | models.py::RegionStat | date, hour, region, count | camera cũ |
 | `ticket_counts` | routers/tickets.py::TicketCount | date (YYYY-MM-DD), hour (NULL = cả ngày), ticket_count, entered_by, created_at | tickets.py |
 | `daily_reports` | daily_report.py::DailyReport | date, data (JSON), total_entries, incidents, created_at, sent_at, delivery | daily_report.py |
 | `recipients` | routers/admin.py::Recipient | name, channel, address (chat_id), active, created_at, topics | admin.py |
@@ -616,7 +604,7 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 **Thêm cột mới:** khai báo `Column(...)` trong lớp → khởi động backend → `ensure_schema` tự thêm. Không cần xóa tệp `.db`.
 
 **Lược đồ SQL và Dữ liệu mẫu:**
-- Lược đồ toàn bộ 17 bảng được lưu tại [`docs/database/000_initial_schema.sql`](database/000_initial_schema.sql).
+- Lược đồ toàn bộ 16 bảng được lưu tại [`docs/database/000_initial_schema.sql`](database/000_initial_schema.sql).
 - Đề xuất bổ sung ràng buộc khóa ngoại & chỉ mục tại [`docs/database/001_proposed_constraints.sql`](database/001_proposed_constraints.sql).
 - Dữ liệu mẫu chuẩn một ngày vận hành (10/11/2026) được lưu tại [`sample_data/sample_day.sql`](../sample_data/sample_day.sql), có thể nạp vào CSDL riêng để kiểm thử theo hướng dẫn trong [`docs/database/README.md`](database/README.md).
 
@@ -654,7 +642,7 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 | Đổi sức chứa trên web mà camera không đổi | `camera_bridge.py::Net._poller` (15 giây), `admin.update_config` |
 | Giờ thống kê lệch 7 tiếng | `backend/timeutil.py`, `SMARTCAU_UTC_OFFSET_HOURS`; thống kê phải dùng `local_time` / `to_local` |
 | Tổng quan báo mức cũ / "chưa nhận mức cảnh báo" | Camera 1 không gửi `/occupancy` trong 30 giây — `counting.py::current_stats` |
-| Dự báo / thời gian chờ lạ | `backend/routers/insights.py::live`, `_hourly_profile` |
+| Dự báo / thời gian chờ lạ | `backend/routers/insights.py::live`, `wait_now`, `_hourly_profile` |
 | KPI O1/O4/O5/O8 sai | `backend/routers/reports.py::report_summary` (khối `kpis`), `tickets.py::reconciliation` |
 | Biểu đồ nhiệt không khớp | `reports.py::heatmap` (dùng `local_time`) |
 | Chênh lệch vé sai | `tickets.py::reconciliation` (`compared_entries`) |
@@ -731,7 +719,7 @@ SQLite `backend/smartcau.db`. Thời gian lưu **UTC** (trừ `bridge_crossings.
 
 ## 11. Kiểm thử
 
-Chạy: `pytest -q` (72 test). `tests/test_api.py` dùng CSDL trong bộ nhớ và thay `notify.deliver*` bằng hàm ghi vào danh sách `SENT` / `DOCS` (không gửi Telegram thật).
+Chạy: `pytest -q` (70 test). `tests/test_api.py` dùng CSDL trong bộ nhớ và thay `notify.deliver*` bằng hàm ghi vào danh sách `SENT` / `DOCS` (không gửi Telegram thật).
 
 | Tệp test | Kiểm tra |
 |---|---|

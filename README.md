@@ -15,18 +15,20 @@ Cap2/
 │   ├── visitor_profiler.py   giới tính, tuổi, trong/ngoài nước cho khách vào cầu (F3.2)
 │   ├── crowd_counter.py      ngưỡng và mức cảnh báo Vàng/Đỏ (F2.1)
 │   ├── camera_ui.py          vẽ chữ tiếng Việt có dấu trên khung hình
-│   ├── demographics_engine.py, age_gender_estimator.py, region_mapping.py   lõi nhận diện
-│   └── camera_in.py, camera_out.py   bản cũ 1 camera vào + 1 camera ra (không dùng chung với camera_bridge)
+│   ├── camera_backend.py     mở webcam / điện thoại / RTSP, đọc khung hình mới nhất
+│   ├── buzzer.py             còi / đèn báo tại chỗ khi quá tải (tùy chọn)
+│   └── demographics_engine.py, age_gender_estimator.py, region_mapping.py   lõi nhận diện
 ├── backend/              Lớp nghiệp vụ + dữ liệu (FastAPI + SQLAlchemy + SQLite)
 │   ├── main.py, database.py, models.py, schemas.py, security.py, timeutil.py, notify.py
 │   └── routers/          counting · bridge · demographics (M1) · accounts (M2) · alerts (M3)
 │                         reports (M4) · tickets (M5) · admin (M7)
 ├── frontend/             Lớp giao diện (Streamlit nhiều trang, tiếng Việt)
-│   ├── app.py, common.py, report_export.py
+│   ├── app.py, common.py
 │   └── views/            mỗi trang 1 file
 ├── tests/                pytest: backend 7 module, vạch kẻ, nhận diện, đoàn khách, mặt tiền
-├── tools/                simulate_bridge.py (thử không cần camera), google_sheets_sync.py ...
-├── sample_data/          sample_day.sql (dữ liệu mẫu 1 ngày vận hành đầy đủ), CSV và ảnh thử
+├── tools/                simulate_bridge.py (thử không cần camera), tim_camera.py, kiem_tra_mang.py,
+│                         google_sheets_sync.py, eval_counting.py, eval_demographics.py
+├── sample_data/          sample_day.sql (dữ liệu mẫu 1 ngày vận hành đầy đủ)
 └── docs/                 TONG_QUAN_MA_NGUON.md, database/ (lược đồ SQL), API_CONTRACT.md, AI_CAI_THIEN.md
 ```
 

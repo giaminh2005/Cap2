@@ -9,8 +9,6 @@ Phu trach: MINH.   Chuc nang BFD: F1.2, F1.4, F5.1   (FR-02, FR-10, FR-16, BRULE
     GET  /stats/occupancy/history  dien bien so nguoi (mac dinh 60 phut gan nhat)
     POST /facade_pass              F1.4 1 nguoi di qua vung mat tien ma KHONG len cau
     GET  /stats/facade?date=       F1.4 luot mat tien theo gio
-
-    (cu, giu cho camera_in.py / camera_out.py) POST /entry, POST /exit
 """
 
 from datetime import datetime, timedelta
@@ -23,7 +21,7 @@ from sqlalchemy.orm import Session
 
 from ..database import Base, get_db
 from ..models import OccupancySnapshot, VisitEvent, get_config, get_state
-from ..schemas import OccupancyIn, VisitEventIn
+from ..schemas import OccupancyIn
 from ..security import require_api_key
 from ..timeutil import iso, local_day_range_utc, local_now, parse_day, to_local
 
@@ -41,25 +39,6 @@ class FacadePass(Base):
 class FacadeIn(BaseModel):
     camera_id: Optional[int] = None
     count: int = 1
-
-
-@router.post("/entry", dependencies=[Depends(require_api_key)])
-def person_entry(event: VisitEventIn, db: Session = Depends(get_db)):
-    row = VisitEvent(track_id=event.track_id, age=event.age, age_range=event.age_range,
-                     gender=event.gender, origin=event.origin, camera_id=event.camera_id)
-    db.add(row)
-    state = get_state(db)
-    state.current_count += 1
-    db.commit()
-    return {"saved": True, "id": row.id, "current_count": state.current_count}
-
-
-@router.post("/exit", dependencies=[Depends(require_api_key)])
-def person_exit(db: Session = Depends(get_db)):
-    state = get_state(db)
-    state.current_count = max(0, state.current_count - 1)
-    db.commit()
-    return {"current_count": state.current_count}
 
 
 @router.post("/occupancy", dependencies=[Depends(require_api_key)])

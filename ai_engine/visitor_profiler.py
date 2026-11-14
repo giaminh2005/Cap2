@@ -3,9 +3,8 @@ visitor_profiler.py  —  F3.2 Uoc luong gioi tinh, khoang tuoi, trong nuoc / nu
 =========================================================================================================
 Phu trach: MINH.   Yeu cau: FR-09, BRULE-05, BRULE-06 (BRD Sprint 1).
 
-Tach tu phan nhan khau hoc trong camera_in.py (YOLO-pose keypoints +
-DemographicsEngine bo phieu theo thoi gian + luu ho so 1 lan) de dung cho he
-thong 2 camera chan cau (camera_bridge.py). Loi AI van nam o
+YOLO-pose keypoints + DemographicsEngine bo phieu theo thoi gian + luu ho so 1 lan,
+dung cho he thong 2 camera chan cau (camera_bridge.py). Loi AI van nam o
 demographics_engine.py / age_gender_estimator.py / region_mapping.py.
 
 Hien tren camera: "Nam/Nu · khoang tuoi · Trong nuoc/chau A | Quoc te"

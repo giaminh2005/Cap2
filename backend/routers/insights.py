@@ -20,7 +20,7 @@ from sqlalchemy.orm import Session
 
 from ..database import get_db
 from ..models import VisitEvent, get_config, get_state
-from ..timeutil import local_day_range_utc, local_now, to_local
+from ..timeutil import local_day_range_utc, local_now
 
 router = APIRouter(prefix="/insights", tags=["Nhan dinh & du bao"])
 
@@ -35,8 +35,22 @@ def _crossings_between(db, start_loc: datetime, end_loc: datetime, direction: st
         BridgeCrossing.local_time < end_loc).all()]
 
 
+_PROFILE_CACHE = {}   # (ngay, so luot cu) -> (profile, days): du lieu cac tuan truoc khong doi trong ngay
+
+
 def _hourly_profile(db, now: datetime):
-    """Trung binh luot vao theo gio cua cung thu trong WEEKS tuan truoc (khong tinh hom nay)."""
+    """Trung binh luot vao theo gio cua cung thu trong WEEKS tuan truoc (khong tinh hom nay).
+    Ket qua duoc nho lai: chi tinh lai khi sang ngay moi hoac co them du lieu cu (vd nap du lieu mau)."""
+    from sqlalchemy import func
+
+    from .bridge import BridgeCrossing
+    day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    n_old = db.query(func.count(BridgeCrossing.id)).filter(
+        BridgeCrossing.direction == "in", BridgeCrossing.local_time >= day0 - timedelta(days=7 * WEEKS),
+        BridgeCrossing.local_time < day0).scalar()
+    key = (day0.date(), n_old)
+    if key in _PROFILE_CACHE:
+        return _PROFILE_CACHE[key]
     totals = [0] * 24
     days = 0
     for w in range(1, WEEKS + 1):
@@ -46,7 +60,10 @@ def _hourly_profile(db, now: datetime):
             days += 1
             for t in rows:
                 totals[t.hour] += 1
-    return [round(v / days, 1) for v in totals] if days else None, days
+    res = ([round(v / days, 1) for v in totals] if days else None, days)
+    _PROFILE_CACHE.clear()
+    _PROFILE_CACHE[key] = res
+    return res
 
 
 def wait_bucket(minutes):
@@ -65,25 +82,40 @@ def wait_bucket_en(minutes):
     return "Under 3 min" if minutes < 3 else "3–5 min" if minutes <= 5 else "Over 5 min"
 
 
-@router.get("/live")
-def live(db: Session = Depends(get_db)):
-    now = local_now()
+def wait_now(db, now: datetime = None) -> dict:
+    """Phan nhe cua /live (khong du bao): toc do vao / ra 5 phut, xu huong, du kien day, thoi gian cho.
+    Bang LED goi moi giay nen chi dung ham nay."""
+    from sqlalchemy import func
+
+    from .bridge import BridgeCrossing
+    now = now or local_now()
     cap = get_config(db).alert_threshold
     onbridge = get_state(db).current_count
-    since = now - timedelta(minutes=TREND_MIN)
-    n_in = len(_crossings_between(db, since, now + timedelta(seconds=1), "in"))
-    n_out = len(_crossings_between(db, since, now + timedelta(seconds=1), "out"))
-    in_rate, out_rate = n_in / TREND_MIN, n_out / TREND_MIN
-    net = in_rate - out_rate
-    trend = "tăng" if net > 0.3 else "giảm" if net < -0.3 else "ổn định"
+    since, until = now - timedelta(minutes=TREND_MIN), now + timedelta(seconds=1)
 
-    minutes_to_full = None
-    if net > 0 and onbridge <= cap:
-        minutes_to_full = round((cap + 1 - onbridge) / net, 1)
+    def count(direction):
+        return db.query(func.count(BridgeCrossing.id)).filter(
+            BridgeCrossing.direction == direction, BridgeCrossing.local_time >= since,
+            BridgeCrossing.local_time < until).scalar()
+    in_rate, out_rate = count("in") / TREND_MIN, count("out") / TREND_MIN
+    net = in_rate - out_rate
+    minutes_to_full = round((cap + 1 - onbridge) / net, 1) if net > 0 and onbridge <= cap else None
     # FR-17: cho bao lau de co cho trong = so nguoi vuot / toc do khach roi cau
     wait = None
     if onbridge >= cap:
         wait = round((onbridge - cap + 1) / out_rate, 1) if out_rate > 0 else 99.0
+    return {"cap": cap, "onbridge": onbridge, "in_rate": in_rate, "out_rate": out_rate, "net": net,
+            "trend": "tăng" if net > 0.3 else "giảm" if net < -0.3 else "ổn định",
+            "minutes_to_full": minutes_to_full, "wait": wait,
+            "wait_label": wait_bucket(wait), "wait_label_en": wait_bucket_en(wait)}
+
+
+@router.get("/live")
+def live(db: Session = Depends(get_db)):
+    now = local_now()
+    w = wait_now(db, now)
+    cap, onbridge, in_rate, out_rate, net = w["cap"], w["onbridge"], w["in_rate"], w["out_rate"], w["net"]
+    trend, minutes_to_full, wait = w["trend"], w["minutes_to_full"], w["wait"]
 
     day0 = now.replace(hour=0, minute=0, second=0, microsecond=0)
     today = [0] * 24

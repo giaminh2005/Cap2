@@ -40,11 +40,7 @@ FONT_SETS = [   # (thuong, dam, nghieng, dam nghieng) - uu tien Times New Roman 
     (rf"{_W}\arial.ttf", rf"{_W}\arialbd.ttf", rf"{_W}\ariali.ttf", rf"{_W}\arialbi.ttf"),
     ("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", "", ""),
 ]
-# giu ten cu cho code khac (vd kiem tra font)
-FONT_REGULAR = [s[0] for s in FONT_SETS]
-FONT_BOLD = [s[1] for s in FONT_SETS]
 
-PERIOD_VI = {"day": "Ngày", "week": "Tuần", "month": "Tháng", "year": "Năm", "custom": "Khoảng thời gian"}
 WEEKDAY_VI = ["Thứ Hai", "Thứ Ba", "Thứ Tư", "Thứ Năm", "Thứ Sáu", "Thứ Bảy", "Chủ nhật"]
 
 ORG_PARENT = os.environ.get("SMARTCAU_ORG_PARENT", "TRUNG TÂM QUẢN LÝ BẢO TỒN\nDI SẢN VĂN HÓA HỘI AN")
@@ -73,13 +69,9 @@ PDF_DEFAULTS = {
 }
 
 INK, MUTED, RULE = (20, 20, 20), (90, 90, 90), (150, 150, 150)
-BRAND, GOLD = (125, 35, 24), (168, 129, 47)
+GOLD = (168, 129, 47)
 CHART = {"oxblood": "#7D2318", "gold": "#B8913F", "teal": "#2F6F73", "stone": "#9A8F84", "ink": "#2A211B",
          "grid": "#E3DACB", "ok": "#4F7F5A", "warn": "#C98A1B"}
-
-
-def _first(paths):
-    return next((p for p in paths if p and os.path.exists(p)), None)
 
 
 def _fmt_d(s: str) -> str:
