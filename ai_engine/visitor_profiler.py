@@ -8,7 +8,7 @@ dung cho he thong 2 camera chan cau (camera_bridge.py). Loi AI van nam o
 demographics_engine.py / age_gender_estimator.py / region_mapping.py.
 
 Hien tren camera: "Nam/Nu · khoang tuoi · Trong nuoc/chau A | Quoc te"
-ngay khi bo phieu du tin cay >= 70%, ke ca truoc khi khach qua vach.
+ngay khi bo phieu du tin cay >= 75%, ke ca truoc khi khach qua vach.
 
 Luu vao CSDL (POST /visit_events) CHI khi khach thuc su VAO cau, 1 lan / nguoi:
   - du tin cay -> gioi tinh, khoang tuoi, nguon khach

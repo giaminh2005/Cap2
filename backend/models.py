@@ -19,7 +19,7 @@ from .database import Base
 class VisitEvent(Base):
     """F3.2 - 1 dong = nhan nhan khau hoc cua 1 luot khach VAO cau.
     Khong luu anh, khong luu dac trung khuon mat (BRULE-05, NFR-05).
-    gender = None / age_range = "Khong xac dinh" khi do tin cay < 70% (BRULE-06).
+    gender = None / age_range = "Khong xac dinh" khi do tin cay < 75% (BRULE-06, nguong trong demographics_engine).
     origin = "Trong nuoc" / "Nuoc ngoai" / None - UOC LUONG tu nhom khu vuc rong."""
     __tablename__ = "visit_events"
     id = Column(Integer, primary_key=True, index=True)

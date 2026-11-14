@@ -506,6 +506,17 @@ def test_morning_brief_and_ticket_reminder_once_per_day():
     client.put("/config", headers=ADMIN, json={"open_time": "00:00", "close_time": "23:59"})
 
 
+def test_daily_pdf_rebuilds_old_stored_report():
+    """Bao cao ngay luu tu phien ban cu / du lieu mau (thieu muc) van tai PDF duoc."""
+    from backend.daily_report import DailyReport
+    from backend.database import SessionLocal
+    with SessionLocal() as db:
+        db.add(DailyReport(date="2026-01-15", data='{"period": "day", "total_in": 5}', total_entries=5))
+        db.commit()
+    pdf = client.get("/reports/daily/2026-01-15/pdf")
+    assert pdf.status_code == 200 and pdf.content[:4] == b"%PDF"
+
+
 def test_recipient_topics_filter_messages():
     from backend.database import SessionLocal
     from backend.routers.admin import active_recipients

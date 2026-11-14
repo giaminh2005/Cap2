@@ -11,7 +11,7 @@ Trạng thái tháng 11/2026: **cả 7 module đã chạy với dữ liệu th�
 | M1 Lõi AI & đếm | F1.1–F1.4, F3.1, F3.2 | routers/counting.py, routers/bridge.py, routers/demographics.py, ai_engine/* | views/luot_qua_cau.py, views/camera.py | **Minh** |
 | M2 Nền tảng | F6.1, PB-T3 | main.py, database.py, models.py, schemas.py, security.py, timeutil.py, routers/accounts.py | app.py, common.py, views/tai_khoan.py | **Minh** |
 | M3 Cảnh báo & sự cố | F2.1–F2.4 | routers/alerts.py, notify.py | views/truc_ca.py, views/bang_led.py | **Hoan** (F2.1–F2.3: Minh) |
-| M4 Phân tích & báo cáo | F3.3, F5.2, F5.3 | routers/reports.py | views/co_cau_khach.py, views/bao_cao.py, report_export.py | **Hoan** |
+| M4 Phân tích & báo cáo | F3.3, F5.2, F5.3 | routers/reports.py | views/co_cau_khach.py, views/bao_cao.py (PDF/Excel: backend/report_export.py) | **Hoan** |
 | M5 Đối chiếu vé | F4.1, F4.2 | routers/tickets.py | views/doi_chieu_ve.py | **Hoan** |
 | M6 Dashboard | F5.1 | (dùng API M1) | views/tong_quan.py, views/lich_su.py | **Khánh** |
 | M7 Quản trị | F6.2, F6.3, PB-06 | routers/admin.py | views/cau_hinh.py, views/nguoi_nhan.py, views/quyen_rieng_tu.py | **Khánh** |

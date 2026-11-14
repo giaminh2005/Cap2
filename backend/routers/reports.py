@@ -239,7 +239,7 @@ def daily_pdf(date: str, db: Session = Depends(get_db)):
     r = db.query(DailyReport).filter(DailyReport.date == date).first()
     if r is None:
         raise HTTPException(status_code=404, detail="Chưa có báo cáo ngày này.")
-    return Response(pdf_of(r), media_type="application/pdf",
+    return Response(pdf_of(r, db), media_type="application/pdf",
                     headers={"Content-Disposition": f'attachment; filename="bao_cao_ngay_{date}.pdf"'})
 
 

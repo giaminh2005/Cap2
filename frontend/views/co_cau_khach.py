@@ -2,7 +2,7 @@
 frontend/views/co_cau_khach.py  —  MODULE M4 · F3.3 Tong hop co cau khach (FR-09, BRULE-06)
 Phu trach: HOAN.
 Ty le gioi tinh, nhom tuoi, trong nuoc / nuoc ngoai theo khoang ngay va theo
-gio. Luot "Khong xac dinh" (do tin cay < 70%) dem rieng, khong vao ty le.
+gio. Luot "Khong xac dinh" (do tin cay < 75%) dem rieng, khong vao ty le.
 """
 
 from datetime import timedelta
@@ -38,7 +38,7 @@ def pct(n):
 kpi_row([
     kpi("Lượt khách có hồ sơ", fmt_int(d["total"]), "khách vào cầu", "primary"),
     kpi("Đã nhận diện", fmt_int(ident), f"{d['total'] and round(ident / d['total'] * 100)}% tổng số", "ok"),
-    kpi("Không xác định", fmt_int(d["unknown"]), "độ tin cậy < 70%, không tính vào tỷ lệ", "muted"),
+    kpi("Không xác định", fmt_int(d["unknown"]), "độ tin cậy < 75%, không tính vào tỷ lệ", "muted"),
     kpi("Nữ / Nam", f"{pct(d['gender']['Woman'])} / {pct(d['gender']['Man'])}", "", "info"),
 ])
 
