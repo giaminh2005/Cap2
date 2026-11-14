@@ -115,6 +115,14 @@ def _post(path, payload):
     return None
 
 
+def _post_jpeg(path, data):
+    try:
+        requests.post(f"{API_BASE}{path}", data=data, timeout=1.5,
+                      headers={**_HEADERS, "Content-Type": "image/jpeg"})
+    except requests.RequestException:
+        pass
+
+
 def _get(path):
     try:
         r = requests.get(f"{API_BASE}{path}", timeout=2)
@@ -128,15 +136,45 @@ def _get(path):
 class Net:
     """Moi lan gui / doc may chu chay o luong nen, vong lap camera khong bao gio phai cho mang.
     - post(): xep hang roi gui lan luot (day hang thi bo ban tin cu nhat).
-    - Luong doc: moi STATE_POLL_SEC doc /bridge/state, moi CONFIG_POLL_SEC doc nguong /config."""
+    - Luong doc: moi STATE_POLL_SEC doc /bridge/state, moi CONFIG_POLL_SEC doc nguong /config.
+    - Luong hinh (tat bang --no-stream): ~12 anh/giay, thu nho + nen JPEG o luong rieng
+      roi gui /bridge/stream_frame/<id> de trang "Camera" tren web xem truc tiep."""
 
-    def __init__(self):
+    STREAM_SEC = 0.08        # ~12 anh / giay
+    STREAM_MAX_W = 960       # thu nho truoc khi nen cho nhe mang
+
+    def __init__(self, camera_id=1, stream=True):
         self.q = queue.Queue(maxsize=300)
         self.state = None
         self.alert_threshold = None
         self.ok = True
+        self.camera_id = camera_id
+        self._frame = None               # khung hinh moi nhat (da ve HUD) cho luong hinh
+        self._frame_lock = threading.Lock()
         threading.Thread(target=self._sender, daemon=True, name="net-send").start()
         threading.Thread(target=self._poller, daemon=True, name="net-poll").start()
+        if stream:
+            threading.Thread(target=self._streamer, daemon=True, name="net-stream").start()
+
+    def stream_frame(self, frame):
+        """Giao khung hinh da ve cho luong hinh (khong copy: vong lap tao mang moi moi khung)."""
+        with self._frame_lock:
+            self._frame = frame
+
+    def _streamer(self):
+        while True:
+            time.sleep(self.STREAM_SEC)
+            with self._frame_lock:
+                frame, self._frame = self._frame, None
+            if frame is None:
+                continue
+            h, w = frame.shape[:2]
+            if w > self.STREAM_MAX_W:
+                frame = cv2.resize(frame, (self.STREAM_MAX_W, int(h * self.STREAM_MAX_W / w)),
+                                   interpolation=cv2.INTER_AREA)
+            ok, buf = cv2.imencode(".jpg", frame, [int(cv2.IMWRITE_JPEG_QUALITY), 70])
+            if ok:
+                _post_jpeg(f"/bridge/stream_frame/{self.camera_id}", buf.tobytes())
 
     def post(self, path, payload):
         try:
@@ -335,6 +373,8 @@ def parse_args(argv=None):
     ap.add_argument("--face-detector", default=os.environ.get("SMARTCAU_FACE_DETECTOR", "yunet"),
                     choices=("yunet", "retinaface", "mtcnn", "opencv", "ssd", "mediapipe"),
                     help="Bo tim khuon mat cua DeepFace. retinaface chinh xac nhat nhung cham nhat")
+    ap.add_argument("--no-stream", action="store_true",
+                    help="Khong gui hinh truc tiep len trang Camera tren web (tiet kiem mang)")
     ap.add_argument("--no-face-gate", action="store_true",
                     help="Tat cong chat luong mat (mac dinh chi phan tich khi mat du to, nhin thang, khong nhoe)")
     args = ap.parse_args(argv)
@@ -395,7 +435,7 @@ def main():
             ai_status = ""
             print(f"[CAMERA {cam}] Nhận diện giới tính, tuổi ({backend_name}){'' if args.no_origin else ', trong nước/châu Á - quốc tế'}: BẬT.")
 
-    net = Net()
+    net = Net(camera_id=cam, stream=not args.no_stream)
     if args.demographics and not ai_status:
         profiler = VisitorProfiler(post=net.post, with_origin=not args.no_origin, camera_id=cam,
                                    quality_gate=not args.no_face_gate)
@@ -589,6 +629,7 @@ def main():
                                                     + (f" · mặt {profiler.engine.avg_ms:.0f} ms"
                                                        if profiler is not None and getattr(profiler.engine, "avg_ms", 0) else "")))
         layer.render(out)
+        net.stream_frame(out)          # gui len trang Camera tren web (luong rieng nen + gui)
         cv2.imshow(window, out)
         key = cv2.waitKey(1) & 0xFF
         if key in (ord("q"), ord("Q"), 27):

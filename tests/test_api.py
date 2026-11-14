@@ -201,6 +201,31 @@ def test_camera_heartbeat():
     assert cams[1]["machine"] == "LAPTOP-HOAN" and cams[2]["machine"] == ""
 
 
+def test_camera_live_stream_frames_and_access(monkeypatch):
+    import backend.routers.bridge as bridge
+    jpg = b"\xff\xd8\xff\xe0anh-thu\xff\xd9"
+    token = ADMIN["Authorization"].split()[1]
+    assert client.post("/bridge/stream_frame/1", content=jpg, headers={"Content-Type": "image/jpeg"}).json()["ok"]
+    # chi quan ly / quan tri xem duoc; token qua ?t= (the <img>) hoac header
+    assert client.get("/bridge/stream_snapshot/1").status_code == 401
+    snap = client.get("/bridge/stream_snapshot/1", params={"t": token})
+    assert snap.status_code == 200 and snap.content == jpg and snap.headers["content-type"] == "image/jpeg"
+    assert client.get("/bridge/stream_snapshot/1", headers=ADMIN).status_code == 200
+    client.post("/users", headers=ADMIN, json={"username": "truc_cam", "password": "truc123", "role": "nguoi_truc"})
+    assert client.get("/bridge/stream_snapshot/1", headers=login("truc_cam", "truc123")).status_code == 403
+    cams = {c["camera_id"]: c for c in client.get("/bridge/cameras").json()}
+    assert cams[1]["has_stream"] is True and cams[2]["has_stream"] is False
+    assert client.get("/bridge/stream_snapshot/2", params={"t": token}).status_code == 404
+    assert client.post("/bridge/stream_frame/3", content=jpg).status_code == 400
+    assert client.post("/bridge/stream_frame/1", content=b"").status_code == 400
+    assert client.post("/bridge/stream_frame/1", content=b"x" * (bridge.STREAM_MAX_BYTES + 1)).status_code == 413
+    # anh cu hon STREAM_FRESH_SEC -> coi nhu camera khong con phat hinh
+    real = bridge.time.monotonic
+    monkeypatch.setattr(bridge.time, "monotonic", lambda: real() + bridge.STREAM_FRESH_SEC + 1)
+    assert client.get("/bridge/cameras").json()[0]["has_stream"] is False
+    assert client.get("/bridge/stream_snapshot/1", params={"t": token}).status_code == 404
+
+
 def test_facade_and_current_stats():
     client.post("/facade_pass", json={"camera_id": 1})
     client.post("/facade_pass", json={"camera_id": 2, "count": 2})

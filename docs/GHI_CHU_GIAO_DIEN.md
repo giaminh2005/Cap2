@@ -166,3 +166,10 @@ Người nhận cũ chưa chọn gì thì vẫn nhận tất cả. Lệnh bot (`
 - **DeepFace chạy nền**: nhận diện giới tính / tuổi không còn làm đứng hình mỗi lần phân tích.
 - Chữ tiếng Việt vẽ theo từng ô nhỏ thay vì cả khung hình; khung 1080p tự thu về 1280 px (`--max-width`, 0 = giữ nguyên).
 - Thanh dưới cùng hiện thời gian AI mỗi khung (`AI xx ms/khung`). Máy yếu: thêm `--imgsz 480` (nhanh hơn, vẫn đếm tốt khi người ở gần), hoặc `--no-origin` để bỏ ước lượng nguồn khách.
+
+## Camera — hình trực tiếp
+- Mỗi chân cầu một thẻ: trạng thái, **hình trực tiếp**, thông số. Chọn **Song song / Chân cầu 1 / Chân cầu 2**.
+- Hình chỉ hiện khi camera chạy `camera_bridge.py` **không** có `--no-stream` (mặc định có gửi hình, khoảng 12 ảnh/giây, rộng 960 px).
+- Máy xem phải mở được cổng **8000** của máy chủ (hình đi thẳng từ backend tới trình duyệt).
+- Chỉ **quản lý** và **quản trị viên** xem được hình (người trực không có trang này). Hình chỉ nằm trong bộ nhớ máy chủ, không lưu xuống ổ đĩa.
+- Khung trống ghi lý do: *Chưa có hình* (camera chưa kết nối), *Không nhận được hình* (mất tín hiệu), *Camera đang chạy nhưng không gửi hình lên web* (chạy với `--no-stream`).
