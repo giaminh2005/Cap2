@@ -32,7 +32,8 @@ SCENARIO = [
 
 
 def send(cam, direction):
-    r = requests.post(f"{API_BASE}/bridge/crossing", headers=HEADERS, timeout=3,
+    # Đã tăng timeout từ 3 lên 15 giây để chờ Supabase xử lý
+    r = requests.post(f"{API_BASE}/bridge/crossing", headers=HEADERS, timeout=15,
                       json={"camera_id": cam, "direction": direction})
     r.raise_for_status()
     return r.json()

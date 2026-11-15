@@ -11,8 +11,11 @@ Ket noi CSDL dung chung cho moi router. Tach ra tu api_server.py cu.
 
 import os
 
+from dotenv import load_dotenv
 from sqlalchemy import create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
+
+load_dotenv()  # doc file .env o thu muc goc du an (neu co)
 
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _DEFAULT_DB = f"sqlite:///{os.path.join(_THIS_DIR, 'smartcau.db')}"
