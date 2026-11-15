@@ -57,10 +57,13 @@ Mã yêu cầu vẫn được ghi ở phần đầu mỗi tệp `frontend/views/
 - Nhãn hiển thị: **Trong nước/châu Á** và **Quốc tế** (dữ liệu trong CSDL vẫn là `Trong nuoc` / `Nuoc ngoai`).
 - Đây là ước lượng từ nhóm khu vực rộng của mô hình AI: nhóm Đông Á → Trong nước/châu Á, các nhóm khác → Quốc tế. Mô hình không phân biệt được khách Việt Nam với khách Hàn Quốc, Nhật Bản, Trung Quốc, vì vậy mới gộp thành "Trong nước/châu Á".
 - Số liệu chỉ dùng để xem xu hướng, không dùng để xác định quốc tịch từng người. Hệ thống không lưu ảnh hay đặc trưng khuôn mặt.
-- Kết quả có độ tin cậy dưới 70% được ghi là "Không xác định" và không tính vào tỷ lệ (BRULE-06).
-- Nếu trang không có hồ sơ khách: camera chân cầu chưa chạy, hoặc đang chạy với `--no-demographics`, hoặc DeepFace lỗi (xem cửa sổ lệnh camera).
+- Kết quả có độ tin cậy dưới 75% được ghi là "Không xác định" và không tính vào tỷ lệ (BRULE-06 yêu cầu tối thiểu 70%; hệ thống dùng 75%, `demographics_engine.CONFIDENCE_THRESHOLD`).
+- Nếu trang không có hồ sơ khách: camera chân cầu chưa chạy, hoặc đang chạy với `--no-demographics`, hoặc bộ nhận diện (InsightFace / DeepFace) không nạp được (xem cửa sổ lệnh camera, thanh dưới cùng ghi "Nhận diện: LỖI").
 
 ## Báo cáo định kỳ (KPI Sprint 0)
+- Kỳ báo cáo: **Ngày, Tuần** (7 ngày tính đến ngày chọn), **Tháng** (tháng dương lịch), **Năm** (năm dương lịch), **Tùy chọn** (từ ngày – đến ngày, tối đa 3 năm). Tháng / năm đang diễn ra thì so với cùng số ngày của kỳ trước.
+- PDF lập theo thể thức văn bản hành chính (Quốc hiệu, số báo cáo, mục I–VI, nơi nhận, chữ ký), có logo SmartCau in chìm và biểu đồ. Mục **Tùy chỉnh nội dung báo cáo PDF**: chọn mục, bật / tắt biểu đồ, số báo cáo, người lập, thủ trưởng, cơ quan, nơi nhận, kiến nghị. Tên cơ quan mặc định đổi bằng biến `SMARTCAU_ORG_PARENT`, `SMARTCAU_ORG_NAME`, `SMARTCAU_ORG_PLACE`.
+
 | Ô trên trang | KPI | Cách tính |
 |---|---|---|
 | Phút vượt sức chứa | O1 | Số phút có ít nhất một lần đo vượt sức chứa |

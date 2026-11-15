@@ -9,7 +9,7 @@ Tài liệu này rà soát toàn bộ chuỗi xử lý AI, chỉ ra điểm yế
 | Phát hiện người | YOLOv8n (bản nhỏ nhất), ảnh 640 px | Bỏ sót người ở xa, người bị che khi đông |
 | Theo dõi | BoT-SORT | Đổi ID khi hai người đi sát nhau → đếm lặp hoặc bỏ sót lượt qua vạch |
 | Đếm vào/ra | Điểm chân qua vạch, có vùng đệm | Phụ thuộc vị trí vạch và góc camera |
-| Tìm mặt | DeepFace + YuNet | Mặt nhỏ, nghiêng, nhòe vẫn được đưa vào mô hình |
+| Tìm mặt | Cắt mặt theo 2 mắt + mũi của YOLO-pose (không cần dò mặt); dự phòng: DeepFace + YuNet khi model không có keypoint | Mặt nhỏ, nghiêng, nhòe: đã có cổng chất lượng mặt chặn lại (mục 2) |
 | Giới tính, tuổi | **InsightFace (buffalo_s ONNX)** [Mặc định] + **DeepFace (VGG-Face)** [Dự phòng] | Tối ưu cho người châu Á qua ONNX Runtime (~4 ms/mặt), tự fallback DeepFace nếu thiếu ONNX |
 | Trong / ngoài nước | DeepFace race → nhóm khu vực | **Không thể** suy ra quốc tịch từ khuôn mặt; khách Việt, Hàn, Nhật, Trung bị gộp |
 

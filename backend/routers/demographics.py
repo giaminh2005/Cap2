@@ -7,7 +7,7 @@ Phu trach: MINH.   Chuc nang BFD: F3.2, F3.3   (FR-09, BRULE-05, BRULE-06)
     GET  /visit_events             tra cuu, loc theo ngay / gioi tinh / tuoi / nguon khach
     GET  /stats/demographics       co cau khach theo gio, khoang tuoi, trong nuoc / nuoc ngoai
 
-BRULE-06: luot co gender = None (do tin cay < 70%) duoc dem rieng la
+BRULE-06: luot co gender = None (do tin cay < 75%, demographics_engine.CONFIDENCE_THRESHOLD) duoc dem rieng la
 "Khong xac dinh" va KHONG dua vao ty le.
 """
 

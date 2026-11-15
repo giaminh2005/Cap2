@@ -22,7 +22,7 @@ LAN DUY NHAT tu DeepFace nhu ban cu (age_gender_estimator.py goc).
 
 NGUONG TIN CAY: ket qua CHI duoc coi la "san sang" (ready=True, cho phep
 hien thi/luu ho so) khi do tin cay bo phieu >= CONFIDENCE_THRESHOLD (mac
-dinh 0.70 = 70%, dung theo yeu cau nang cap Phase 2). Duoi nguong nay, van
+dinh 0.75 = 75%, chat hon muc 70% cua BRULE-06). Duoi nguong nay, van
 tiep tuc thu thap them phieu (hien "dang xac dinh...") thay vi hien ket
 qua chua chac chan.
 

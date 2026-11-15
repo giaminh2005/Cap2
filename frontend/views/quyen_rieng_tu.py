@@ -24,7 +24,7 @@ st.markdown("""
 - Khung hình camera chỉ được xử lý **trong bộ nhớ**, không ghi ra ổ đĩa, không gửi lên máy chủ.
 - **Không lưu** ảnh, video hay đặc trưng khuôn mặt. Máy chủ chỉ nhận số đếm và nhãn ước lượng
   (giới tính, nhóm tuổi, trong nước/châu Á hoặc quốc tế) của từng lượt vào, không kèm tên hay ảnh.
-- Kết quả có độ tin cậy dưới 70% được ghi là **“Không xác định”** và không đưa vào tỷ lệ.
+- Kết quả có độ tin cậy dưới 75% được ghi là **“Không xác định”** và không đưa vào tỷ lệ.
 - “Trong nước/châu Á” và “Quốc tế” chỉ là **ước lượng thô** từ nhóm khu vực rộng, không phải quốc tịch.
 - Số liệu và nhật ký sự cố được lưu tối thiểu **24 tháng**.
 """)

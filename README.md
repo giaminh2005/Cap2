@@ -19,9 +19,12 @@ Cap2/
 │   ├── buzzer.py             còi / đèn báo tại chỗ khi quá tải (tùy chọn)
 │   └── demographics_engine.py, age_gender_estimator.py, region_mapping.py   lõi nhận diện
 ├── backend/              Lớp nghiệp vụ + dữ liệu (FastAPI + SQLAlchemy + SQLite)
-│   ├── main.py, database.py, models.py, schemas.py, security.py, timeutil.py, notify.py
-│   └── routers/          counting · bridge · demographics (M1) · accounts (M2) · alerts (M3)
-│                         reports (M4) · tickets (M5) · admin (M7)
+│   ├── main.py, database.py, models.py, schemas.py, security.py, timeutil.py
+│   ├── notify.py, messages.py, telegram_bot.py      gửi tin Telegram, nội dung tin, bot lệnh + nút "Đã xử lý"
+│   ├── daily_report.py, sheets_auto.py, report_export.py   lịch tự động, đồng bộ Sheets, PDF / Excel
+│   ├── routers/          counting · bridge · demographics (M1) · accounts (M2) · alerts · display (M3)
+│   │                     reports (M4) · tickets (M5) · insights (M6) · admin (M7)
+│   └── led_display/      trang bảng LED 2 đầu cầu (HTML/JS, video mascot + phông nền)
 ├── frontend/             Lớp giao diện (Streamlit nhiều trang, tiếng Việt)
 │   ├── app.py, common.py
 │   └── views/            mỗi trang 1 file
@@ -29,7 +32,9 @@ Cap2/
 ├── tools/                simulate_bridge.py (thử không cần camera), tim_camera.py, kiem_tra_mang.py,
 │                         google_sheets_sync.py, eval_counting.py, eval_demographics.py
 ├── sample_data/          sample_day.sql (dữ liệu mẫu 1 ngày vận hành đầy đủ)
-└── docs/                 TONG_QUAN_MA_NGUON.md, database/ (lược đồ SQL), API_CONTRACT.md, AI_CAI_THIEN.md
+├── media/                tệp gốc nhóm gửi: video mascot, phông nền, tài liệu BRD / BFD / BPMN
+└── docs/                 TONG_QUAN_MA_NGUON.md, API_CONTRACT.md, database/ (lược đồ SQL), AI_CAI_THIEN.md,
+                          CAMERA_NGOAI.md, TRIEN_KHAI_NHIEU_MAY.md, GHI_CHU_GIAO_DIEN.md, PHAN_CONG.md
 ```
 
 ## Cài đặt (1 lần mỗi máy)
@@ -54,9 +59,9 @@ pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python
 pip install "opencv-python>=4.9,<5"
 ```
 
-### DeepFace không nhận diện
+### Nhận diện giới tính / tuổi không chạy
 
-Camera vẫn đếm người nhưng không hiện giới tính / tuổi, và in **[LỖI NHẬN DIỆN]** kèm lỗi gốc. Kiểm tra trong đúng `.venv`:
+Mặc định dùng **InsightFace** (`genderage.onnx` chạy bằng `onnxruntime`), tự chuyển sang **DeepFace** nếu chưa có mô hình ONNX; chọn tay bằng biến `SMARTCAU_DEMOGRAPHICS_BACKEND=insightface|deepface`. Khi cả hai lỗi, camera vẫn đếm người, thanh dưới cùng ghi "Nhận diện: LỖI" và cửa sổ lệnh in lỗi gốc. Kiểm tra DeepFace trong đúng `.venv`:
 ```powershell
 python -c "import sys; print(sys.executable)"
 python -c "import tensorflow as tf; print('TF', tf.__version__)"
@@ -93,7 +98,8 @@ Nhận diện giới tính / tuổi / nguồn khách bật sẵn; thêm `--no-de
 - Tăng độ chính xác: `--imgsz 960`, `--model yolov8s-pose.pt`, `--face-detector retinaface`. Xem [docs/AI_CAI_THIEN.md](docs/AI_CAI_THIEN.md).
 - Không có camera: `python tools/simulate_bridge.py --random 200` để giả lập lượt qua cầu.
 - Dùng cơ sở dữ liệu mẫu một ngày đầy đủ (`sample_data/sample_day.sql`): xem hướng dẫn nạp và chạy tại [`docs/database/README.md`](docs/database/README.md).
-- **Nhận tin Telegram:** đặt biến `TELEGRAM_BOT_TOKEN` trên máy chạy backend, thêm chat_id ở trang **Người nhận cảnh báo**.
+- **Nhận tin Telegram:** dán token bot ở trang **Người nhận cảnh báo** (hoặc đặt biến `TELEGRAM_BOT_TOKEN` trên máy chạy backend), rồi thêm người nhận và chọn loại tin cho từng người.
+- **Xem camera trực tiếp:** trang **Camera** (quản lý / quản trị). Camera tự gửi hình khi chạy; thêm `--no-stream` để tắt.
 
 ## Chạy trên nhiều máy
 
@@ -110,7 +116,7 @@ Một máy làm **máy chủ** (`uvicorn backend.main:app --host 0.0.0.0 --port 
 ## Lưu ý về nhận diện
 
 - **Trong nước/châu Á – Quốc tế là ước lượng**: mô hình chỉ phân được nhóm khu vực rộng và gộp khách Việt Nam với khách Hàn, Nhật, Trung, nên không xác định được quốc tịch.
-- Kết quả có độ tin cậy dưới 70% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
+- Kết quả có độ tin cậy dưới 75% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
 - Hệ thống không lưu ảnh hay đặc trưng khuôn mặt; khung hình chỉ xử lý trong bộ nhớ.
 
 ## Bảng LED hai đầu cầu (mascot Linh Thân + Linh Khuyển)
@@ -131,12 +137,14 @@ Một máy làm **máy chủ** (`uvicorn backend.main:app --host 0.0.0.0 --port 
 - **Sơ đồ cầu trực tiếp**: mỗi chấm là một người đang trên cầu, màu theo mức cảnh báo, kèm tốc độ vào/ra mỗi phút.
 - **Dự báo**: "cầu sẽ đầy sau bao nhiêu phút" theo xu hướng 5 phút; **thời gian chờ dự kiến** khi cầu đầy (FR-17, hiện cả trên Bảng LED); dự báo lượt vào từng giờ còn lại trong ngày (trung bình cùng thứ các tuần trước × mức đông hôm nay).
 - **Nhận định tự động**: so với cùng giờ tuần trước, khung giờ cao điểm sắp tới, cơ cấu khách, sự cố xử lý chậm…
-- **Thông báo nổi** ở mọi trang khi có sự cố Đỏ mới, đoàn khách lớn hoặc mất tín hiệu camera.
+- **Thông báo nổi** ở mọi trang khi có sự cố Đỏ mới, cảnh báo Vàng, đoàn khách lớn hoặc mất tín hiệu camera.
 - **Biểu đồ bấm được**: ở trang *Lượt qua cầu*, bấm vào một cột ngày/tháng/năm để xem chi tiết bên trong.
 
 ## Báo cáo ngày tự động và chỉ số KPI
 
 - Sau **giờ đóng cửa** (trang *Ngưỡng & giờ hoạt động*), backend tự lập báo cáo ngày, lưu lại và gửi tin tóm tắt kèm tệp **PDF** qua Telegram cho danh sách người nhận. Nếu máy tắt lúc đóng cửa, lần chạy sau sẽ lập bù ngày hôm trước. Xem và tải lại ở trang *Báo cáo định kỳ*.
+- Sáng **thứ Hai** tự gửi **báo cáo tuần** (so với tuần trước, kèm PDF); đầu ngày gửi bản tin sáng, 30 phút trước giờ đóng cửa nhắc nhập số cuống vé.
+- Trang *Báo cáo định kỳ*: chọn kỳ **Ngày / Tuần / Tháng / Năm / Tùy chọn**, lập **PDF theo thể thức văn bản hành chính** (logo in chìm, biểu đồ, tùy chỉnh mục, người lập, thủ trưởng, kiến nghị) hoặc Excel.
 - Báo cáo có các chỉ số Sprint 0: **O1** số phút vượt sức chứa, **O4** % sự cố xử lý trong 3 phút, **O5** % cảnh báo sai (người trực bấm **Báo sai** ở trang *Trực ca & sự cố*), **O8** chênh lệch lượt vào / cuống vé; kèm **biểu đồ nhiệt giờ × thứ**.
 
 ## Đo độ chính xác để nghiệm thu

@@ -68,7 +68,7 @@ Chỉ camera 1 gửi mức cảnh báo Vàng/Đỏ; cả hai đều gửi lượ
 | Xem song song 2 bảng LED | `http://192.168.1.10:8000/led/hai-man-hinh.html` |
 | Tài liệu API | `http://192.168.1.10:8000/docs` |
 
-Trang **Camera** trong web cho biết camera nào đang chạy trên **máy nào**, tốc độ khung hình và lúc mất tín hiệu.
+Trang **Camera** trong web (quản lý / quản trị) hiện **hình trực tiếp** của từng chân cầu, camera đang chạy trên **máy nào**, tốc độ khung hình và lúc mất tín hiệu. Hình đi thẳng từ backend tới trình duyệt, nên máy xem phải mở được cổng **8000**. Máy camera yếu mạng thì thêm `--no-stream` để không gửi hình.
 
 ## 5. Kịch bản demo "như thật"
 

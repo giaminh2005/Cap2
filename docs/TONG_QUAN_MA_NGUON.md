@@ -150,6 +150,7 @@ Phím trên cửa sổ camera: **L** / **l** / **1** / **K** hoặc **chuột ph
 | `SMARTCAU_FONT`, `SMARTCAU_FONT_BOLD` | backend/report_export.py, ai_engine/camera_ui.py | Đường dẫn font .ttf tiếng Việt (thường / đậm) cho PDF và chữ trên camera |
 | `SMARTCAU_ORG_PARENT`, `SMARTCAU_ORG_NAME`, `SMARTCAU_ORG_PLACE` | backend/report_export.py | Tên cơ quan chủ quản, đơn vị lập báo cáo, địa danh trên PDF (mặc định: Trung tâm QLBT DSVH Hội An / Bộ phận vận hành hệ thống SmartCau AI / Hội An) |
 | `SMARTCAU_FACE_DETECTOR` | ai_engine/age_gender_estimator.py, camera_bridge.py | Bộ tìm mặt mặc định |
+| `SMARTCAU_DEMOGRAPHICS_BACKEND` | ai_engine/age_gender_estimator.py | Bộ nhận diện giới tính / tuổi: `insightface` (mặc định, ONNX) hoặc `deepface` |
 | `SMARTCAU_BUZZER_WEBHOOK` | ai_engine/buzzer.py | URL gọi khi Đỏ (còi / đèn ngoài, tùy chọn) |
 
 **Tệp cấu hình sinh ra khi chạy (không đưa lên GitHub, có trong `.gitignore`):**
@@ -467,7 +468,7 @@ Menu theo vai trò (`frontend/app.py::PAGES`):
 | `telegram_bot.py` | `SEEN`, `HELP`, `running`, `handle_update(upd, send, answer)`, `_loop`, `start` | `handle_update` nhận `send`/`answer` để test không cần mạng |
 | `daily_report.py` | Bảng `DailyReport`, `summary_text`, `_tickets_missing`, `pdf_of`, `_deliver` (gửi + Sheets), `generate`, `_has_data`, `run_due`, `_recipients`, `_once`, `_send_morning`, `weekly_summaries`, `send_weekly`, `start_scheduler` | Thời điểm truyền vào `run_due(db, now_local)` để test được |
 | `sheets_auto.py` | `load_conf`, `sync_now`, `auto_sync_after_report`, `CONF_FILE`, `KEY_FILE`, `SELF_URL` | Không ném lỗi, trả câu tóm tắt |
-| `report_export.py` | `FONT_SETS` (Times New Roman → Liberation Serif → DejaVu Serif → Arial), `PERIOD_VI`, `WEEKDAY_VI`, `ORG_PARENT`, `ORG_NAME`, `ORG_PLACE`, `SECTIONS`, `PDF_DEFAULTS`, `period_label`, `_until_today`, `report_tables`, `to_excel`, biểu đồ `chart_trend` / `chart_hours_slots` / `chart_demographics` / `chart_tickets` (matplotlib), `_make_doc_class` (lớp `Doc`: `header` + `watermark` logo chìm, `footer` số trang), `_narrative`, `_assessment`, `to_pdf(r, options)`, `_strip_accents` | Dùng chung cho web (Excel / PDF) và báo cáo ngày / tuần tự động. Cần `fpdf2`, `matplotlib`, `Pillow` |
+| `report_export.py` | `FONT_SETS` (Times New Roman → Liberation Serif → DejaVu Serif → Arial), `WEEKDAY_VI`, `ORG_PARENT`, `ORG_NAME`, `ORG_PLACE`, `SECTIONS`, `PDF_DEFAULTS`, `period_label`, `_until_today`, `report_tables`, `to_excel`, biểu đồ `chart_trend` / `chart_hours_slots` / `chart_demographics` / `chart_tickets` (matplotlib), `_make_doc_class` (lớp `Doc`: `header` + `watermark` logo chìm, `footer` số trang), `_narrative`, `_assessment`, `to_pdf(r, options)`, `_strip_accents` | Dùng chung cho web (Excel / PDF) và báo cáo ngày / tuần tự động. Cần `fpdf2`, `matplotlib`, `Pillow` |
 
 ### 6.2 backend/routers/
 | Tệp | Bảng định nghĩa ở đây | Hàm / endpoint |
