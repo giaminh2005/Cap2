@@ -580,3 +580,19 @@ def test_ticket_reconciliation_by_day_range():
     assert r["days"][0]["tickets"] == 7 and r["days_with_tickets"] >= 1
     assert r["total_tickets"] == sum(d["tickets"] for d in r["days"] if d["tickets"] is not None)
     assert client.get("/tickets/reconciliation_range", params={"date_from": t, "date_to": y}).status_code == 400
+
+
+def test_config_rejects_close_before_open():
+    """TC-X06: gio dong cua phai sau gio mo cua."""
+    r = client.put("/config", headers=ADMIN, json={"open_time": "21:00", "close_time": "07:00"})
+    assert r.status_code == 400 and r.json()["detail"] == "Giờ đóng cửa phải sau giờ mở cửa."
+    assert client.put("/config", headers=ADMIN, json={"open_time": "10:00", "close_time": "10:00"}).status_code == 400
+    cfg = client.get("/config").json()
+    assert client.put("/config", headers=ADMIN, json={"open_time": "23:59"}).status_code == 400  # so voi gio dong cu
+    assert client.get("/config").json()["open_time"] == cfg["open_time"]
+
+
+def test_ticket_negative_rejected():
+    """TC-X04: so ve khong duoc am."""
+    r = client.post("/tickets", headers=ADMIN, json={"date": "2026-02-01", "hour": None, "ticket_count": -5})
+    assert r.status_code == 400 and r.json()["detail"] == "Số vé không được âm."

@@ -39,6 +39,9 @@ with st.form("cfg"):
     st.caption(f"Với sức chứa {cap}: Vàng từ {min(cap, max(1, round(cap * 0.75)))} người, Đỏ khi trên {cap} người liên tục 15 giây. "
                "Camera áp dụng ngưỡng mới trong vòng 15 giây.")
     if st.form_submit_button("Lưu thay đổi", type="primary"):
+        if close_t <= open_t:
+            st.error("Giờ đóng cửa phải sau giờ mở cửa.")
+            st.stop()
         try:
             api_put("/config", {"alert_threshold": int(cap), "open_time": open_t.strftime("%H:%M"),
                                 "close_time": close_t.strftime("%H:%M")})

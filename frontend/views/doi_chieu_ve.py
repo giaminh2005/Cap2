@@ -40,10 +40,15 @@ with left, st.container(border=True):
                             index=min(max(0, local_now().hour - OPEN_HOURS[0]), len(OPEN_HOURS) - 1)
                             if day == local_today() else 0)
     cur = existing.get(hour)
-    count = st.number_input("Số cuống vé", 0, 100000, int(cur or 0), step=10, key=f"tk_count_{day_s}_{hour}")
+    # Khong dat min_value: neu dat 0 thi o nhap chi to do khi go so am va nut Luu lang le luu so cu,
+    # nguoi dung khong biet. De nhap tu do roi kiem tra ro rang ben duoi.
+    count = st.number_input("Số cuống vé", value=int(cur or 0), max_value=100000, step=10, key=f"tk_count_{day_s}_{hour}")
     if cur is not None:
         st.caption(f"Đã nhập {fmt_int(cur)} vé cho {'cả ngày' if hour is None else f'khung {hour:02d}h'}; lưu lại sẽ ghi đè.")
     if st.button("Lưu", type="primary"):
+        if count < 0:
+            st.error("Số vé không được âm.")
+            st.stop()
         try:
             api_post("/tickets", {"date": day_s, "hour": hour, "ticket_count": int(count)})
             st.toast("Đã lưu số cuống vé.", icon=":material/check_circle:")

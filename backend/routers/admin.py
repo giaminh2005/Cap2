@@ -129,10 +129,16 @@ def update_config(payload: ConfigUpdate, p: Principal = Depends(require_admin), 
             cfg.alert_threshold = payload.alert_threshold
     for field, label in (("open_time", "giờ mở cửa"), ("close_time", "giờ đóng cửa")):
         val = getattr(payload, field)
+        if val is not None and not _TIME_RE.match(val):
+            raise HTTPException(status_code=400, detail=f"{label.capitalize()} phải có dạng HH:MM.")
+    new_open = payload.open_time or cfg.open_time
+    new_close = payload.close_time or cfg.close_time
+    if _minutes(new_close) <= _minutes(new_open):
+        raise HTTPException(status_code=400, detail="Giờ đóng cửa phải sau giờ mở cửa.")
+    for field, label in (("open_time", "giờ mở cửa"), ("close_time", "giờ đóng cửa")):
+        val = getattr(payload, field)
         if val is None:
             continue
-        if not _TIME_RE.match(val):
-            raise HTTPException(status_code=400, detail=f"{label.capitalize()} phải có dạng HH:MM.")
         if val != getattr(cfg, field):
             changes.append(f"{label} {getattr(cfg, field)} → {val}")
             setattr(cfg, field, val)
