@@ -1,163 +1,158 @@
-# SmartCau AI — Camera AI quản lý đám đông Chùa Cầu (Nhóm 50 · 49K22.3)
+# SmartCau AI
 
-> **Tài liệu tổng thể mã nguồn (chức năng ↔ tệp code, API, CSDL, tra lỗi):** [`docs/TONG_QUAN_MA_NGUON.md`](docs/TONG_QUAN_MA_NGUON.md). Khi nhờ AI sửa lỗi, gửi kèm tệp này.
+SmartCau AI là hệ thống hỗ trợ điều tiết khách tại **Chùa Cầu, Hội An**, do **Nhóm 50 · 49K22.3** thực hiện. Hai camera đặt ở hai đầu cầu ghi nhận lượt vào và ra. Người trực theo dõi số người đang trên cầu, nhận cảnh báo quá tải và xác nhận xử lý sự cố qua web hoặc Telegram. Hai bảng LED hướng dẫn khách tại chỗ.
 
-Hệ thống đếm khách trên Chùa Cầu bằng 2 camera đặt ở 2 chân cầu, cảnh báo quá tải Vàng/Đỏ, ước lượng giới tính, độ tuổi, khách trong nước/châu Á hay quốc tế, và trang web quản lý cho người trực, quản lý và quản trị viên.
+## Chạy thử trên một máy
 
-## Kiến trúc 3 lớp
+Dùng Python 3.11 hoặc 3.12. Chạy các lệnh từ thư mục gốc `Cap2/`.
 
-```
-Cap2/
-├── ai_engine/            Lớp AI tại camera (OpenCV + YOLOv8 + InsightFace ONNX / DeepFace)
-│   ├── camera_bridge.py      ★ chương trình camera chân cầu (dùng cho cả camera 1 và 2)
-│   ├── line_crossing.py      vạch kẻ vào/ra (F1.2, F1.3) + đếm lượt mặt tiền (F1.4)
-│   ├── group_detector.py     phát hiện đoàn khách ≥ 10 người (F3.1)
-│   ├── visitor_profiler.py   giới tính, tuổi, trong/ngoài nước cho khách vào cầu (F3.2)
-│   ├── crowd_counter.py      ngưỡng và mức cảnh báo Vàng/Đỏ (F2.1)
-│   ├── camera_ui.py          vẽ chữ tiếng Việt có dấu trên khung hình
-│   ├── camera_backend.py     mở webcam / điện thoại / RTSP, đọc khung hình mới nhất
-│   ├── buzzer.py             còi / đèn báo tại chỗ khi quá tải (tùy chọn)
-│   └── demographics_engine.py, age_gender_estimator.py, region_mapping.py   lõi nhận diện
-├── backend/              Lớp nghiệp vụ + dữ liệu (FastAPI + SQLAlchemy + SQLite)
-│   ├── main.py, database.py, models.py, schemas.py, security.py, timeutil.py
-│   ├── notify.py, messages.py, telegram_bot.py      gửi tin Telegram, nội dung tin, bot lệnh + nút "Đã xử lý"
-│   ├── daily_report.py, sheets_auto.py, report_export.py   lịch tự động, đồng bộ Sheets, PDF / Excel
-│   ├── routers/          counting · bridge · demographics (M1) · accounts (M2) · alerts · display (M3)
-│   │                     reports (M4) · tickets (M5) · insights (M6) · admin (M7)
-│   └── led_display/      trang bảng LED 2 đầu cầu (HTML/JS, video mascot + phông nền)
-├── frontend/             Lớp giao diện (Streamlit nhiều trang, tiếng Việt)
-│   ├── app.py, common.py
-│   └── views/            mỗi trang 1 file
-├── tests/                pytest: backend 7 module, vạch kẻ, nhận diện, đoàn khách, mặt tiền
-├── tools/                simulate_bridge.py (thử không cần camera), tim_camera.py, kiem_tra_mang.py,
-│                         google_sheets_sync.py, eval_counting.py, eval_demographics.py
-├── sample_data/          sample_day.sql (dữ liệu mẫu 1 ngày vận hành đầy đủ)
-├── media/                tệp gốc nhóm gửi: video mascot, phông nền, tài liệu BRD / BFD / BPMN
-└── docs/                 TONG_QUAN_MA_NGUON.md, API_CONTRACT.md, database/ (lược đồ SQL), AI_CAI_THIEN.md,
-                          CAMERA_NGOAI.md, TRIEN_KHAI_NHIEU_MAY.md, GHI_CHU_GIAO_DIEN.md, PHAN_CONG.md
-```
+**Windows (PowerShell)**
 
-## Cài đặt (1 lần mỗi máy)
-
-Khuyến nghị Python 3.11 hoặc 3.12. DeepFace cần TensorFlow; nếu `pip install` báo không tìm thấy bản tensorflow phù hợp với Python của máy, hãy tạo môi trường bằng Python 3.11 như dưới.
-
-**Windows (PowerShell):**
 ```powershell
 py -3.11 -m venv .venv
 .venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+python -m pip install -r requirements.txt
 ```
-**macOS:**
+
+**macOS**
+
 ```bash
-python3 -m venv .venv
+python3.11 -m venv .venv
 source .venv/bin/activate
-pip install -r requirements.txt
-```
-Nếu cửa sổ camera báo lỗi `The function is not implemented` (OpenCV bản headless hoặc bản 5): gỡ hết rồi cài lại đúng bản.
-```bash
-pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python
-pip install "opencv-python>=4.9,<5"
+python -m pip install -r requirements.txt
 ```
 
-### Nhận diện giới tính / tuổi không chạy
+Mở hai terminal, kích hoạt `.venv` ở mỗi terminal, rồi chạy backend trước và web sau.
 
-Mặc định dùng **InsightFace** (`genderage.onnx` chạy bằng `onnxruntime`), tự chuyển sang **DeepFace** nếu chưa có mô hình ONNX; chọn tay bằng biến `SMARTCAU_DEMOGRAPHICS_BACKEND=insightface|deepface`. Khi cả hai lỗi, camera vẫn đếm người, thanh dưới cùng ghi "Nhận diện: LỖI" và cửa sổ lệnh in lỗi gốc. Kiểm tra DeepFace trong đúng `.venv`:
+| Thành phần | Lệnh | Địa chỉ |
+| --- | --- | --- |
+| Backend FastAPI | `python -m uvicorn backend.main:app --port 8000` | [Tài liệu API](http://127.0.0.1:8000/docs) · [Kiểm tra kết nối](http://127.0.0.1:8000/health) |
+| Web Streamlit | `python -m streamlit run frontend/app.py` | [Web quản lý](http://localhost:8501) |
+
+Với cơ sở dữ liệu chưa có tài khoản, backend tạo tài khoản `admin` với mật khẩu `admin123`. Web yêu cầu đổi mật khẩu khi đăng nhập lần đầu. Sau đó có thể tạo tài khoản **Quản lý** và **Người trực** trong trang **Tài khoản**.
+
+Để thử luồng đếm mà không cần camera, dùng backend trỏ vào cơ sở dữ liệu thử nghiệm rồi chạy một trong hai lệnh sau. Kết quả hiện ở trang **Lượt qua cầu**. Công cụ này gửi sự kiện qua vạch. Mức cảnh báo tự động do tiến trình camera 1 tính.
+
 ```powershell
-python -c "import sys; print(sys.executable)"
-python -c "import tensorflow as tf; print('TF', tf.__version__)"
-python -c "from deepface import DeepFace; print('DeepFace OK')"
+python tools/simulate_bridge.py
+python tools/simulate_bridge.py --random 200
 ```
-| Lỗi | Cách sửa |
-|---|---|
-| `No module named 'deepface'` | `.venv` chưa kích hoạt hoặc cài nhầm Python khác: kích hoạt `.venv` rồi `pip install deepface` |
-| `No module named 'tensorflow'` / không cài được tensorflow | `pip install tensorflow tf-keras`; nếu pip báo không có bản phù hợp thì dùng Python 3.11 |
-| `DLL load failed` (Windows) | Cài **Microsoft Visual C++ Redistributable x64** (aka.ms/vs/17/release/vc_redist.x64.exe), khởi động lại máy |
-| Lỗi nhắc tới `Keras 3` / `tf_keras` | `pip install tf-keras==` + đúng số phiên bản tensorflow (vd tensorflow 2.17.1 → `tf-keras==2.17.0`) |
-| Lỗi nhắc tới `numpy` | `pip install "numpy<2"` |
 
-Sau khi cài thêm gói, chạy lại 2 lệnh sửa OpenCV ở trên (pip có thể kéo OpenCV 5 về lại).
+## Cơ sở dữ liệu
 
-## Chạy hệ thống (mọi lệnh chạy từ thư mục gốc `Cap2/`)
+| Chế độ | Cấu hình |
+| --- | --- |
+| SQLite cục bộ | Khi `SMARTCAU_DATABASE_URL` chưa được đặt, backend dùng `backend/smartcau.db`. |
+| PostgreSQL dùng chung qua Supabase | Đặt `SMARTCAU_DATABASE_URL` trong `.env` ở thư mục gốc trên máy chạy backend. Backend đọc tệp này khi khởi động. |
 
-| Cửa sổ | Lệnh | Ghi chú |
-|---|---|---|
-| 1 | `uvicorn backend.main:app --reload --port 8000` | API: http://127.0.0.1:8000/docs |
-| 2 | `streamlit run frontend/app.py` | Web: http://localhost:8501 |
-| 3 | `python ai_engine/camera_bridge.py --camera-id 1 --source 0` | camera chân cầu 1 (gửi cảnh báo) |
-| 4 | `python ai_engine/camera_bridge.py --camera-id 2 --source 1` | camera chân cầu 2 |
+Ví dụ cấu hình `.env` cho Supabase. Thay toàn bộ phần kết nối bằng thông tin của dự án Supabase.
 
-Bot Telegram trả lời `/tinhhinh`, `/homnay`, `/suco` và có nút **✅ Đã xử lý** ngay dưới tin cảnh báo Đỏ; mỗi tin kèm tình hình hiện tại. Xem `docs/GHI_CHU_GIAO_DIEN.md`, mục "Tin nhắn Telegram và tự động hóa".
+```dotenv
+SMARTCAU_DATABASE_URL=postgresql://USER:PASSWORD@HOST:PORT/DATABASE
+```
 
-Dùng webcam USB hoặc **điện thoại làm camera** (`--source 1`, `--source phone:<IP>`, `--source droidcam:<IP>`): xem `docs/CAMERA_NGOAI.md`; dò camera bằng `python tools/tim_camera.py`.
+Để demo cục bộ, đặt URL của một tệp SQLite riêng trong terminal backend. Biến môi trường được ưu tiên hơn giá trị trong `.env`. Đặt `SMARTCAU_DISABLE_SCHEDULER=1` để tắt lịch báo cáo và bot Telegram trong lần chạy demo.
 
-Nhận diện giới tính / tuổi / nguồn khách bật sẵn; thêm `--no-demographics` nếu chỉ cần đếm. Các ghi chú, hướng dẫn và mã yêu cầu (FR, BRULE, KPI) đã gỡ khỏi giao diện web được lưu ở `docs/GHI_CHU_GIAO_DIEN.md`.
+```powershell
+$env:SMARTCAU_DATABASE_URL = "sqlite:///backend/demo.db"
+$env:SMARTCAU_DISABLE_SCHEDULER = "1"
+python -m uvicorn backend.main:app --port 8000
+```
 
-- **Đăng nhập lần đầu:** `admin` / `admin123`, hệ thống bắt đổi mật khẩu. Tạo thêm tài khoản Quản lý, Người trực ở trang **Tài khoản**.
-- `--source` nhận số webcam, đường dẫn video hoặc địa chỉ `rtsp://...`.
-- Trên cửa sổ camera (**click vào cửa sổ trước** để nó nhận phím): **chữ L**, số 1 hoặc **chuột phải** = kẻ lại vạch (click 2 đầu vạch rồi click 1 điểm ở phía cầu), `R` = vạch mặc định, `Q` = thoát.
-- Tăng độ chính xác: `--imgsz 960`, `--model yolov8s-pose.pt`, `--face-detector retinaface`. Xem [docs/AI_CAI_THIEN.md](docs/AI_CAI_THIEN.md).
-- Không có camera: `python tools/simulate_bridge.py --random 200` để giả lập lượt qua cầu.
-- Dùng cơ sở dữ liệu mẫu một ngày đầy đủ (`sample_data/sample_day.sql`): xem hướng dẫn nạp và chạy tại [`docs/database/README.md`](docs/database/README.md).
-- **Nhận tin Telegram:** dán token bot ở trang **Người nhận cảnh báo** (hoặc đặt biến `TELEGRAM_BOT_TOKEN` trên máy chạy backend), rồi thêm người nhận và chọn loại tin cho từng người.
-- **Xem camera trực tiếp:** trang **Camera** (quản lý / quản trị). Camera tự gửi hình khi chạy; thêm `--no-stream` để tắt.
+Backend tạo bảng và thêm cột còn thiếu lúc khởi động. Nếu cần chuyển dữ liệu từ `backend/smartcau.db`, chạy [công cụ chuyển SQLite sang PostgreSQL](tools/migrate_sqlite_to_pg.py) trước lần khởi động backend đầu tiên trên cơ sở dữ liệu đích. Công cụ chèn dữ liệu theo từng bảng và có thể dừng giữa chừng nếu trùng khóa chính. Với demo có sẵn số liệu, xem [cách nạp dữ liệu mẫu vào SQLite riêng](docs/database/README.md#nạp-dữ-liệu-mẫu-vào-một-csdl-riêng).
+
+## Chạy camera
+
+Chạy mỗi camera trong một terminal riêng sau khi backend đã sẵn sàng. Ví dụ dưới đây dùng hai thiết bị video trên cùng một máy.
+
+```powershell
+python ai_engine/camera_bridge.py --camera-id 1 --source 0
+python ai_engine/camera_bridge.py --camera-id 2 --source 1
+```
+
+- Dùng `python tools/tim_camera.py` để dò số thiết bị. `--source` cũng nhận đường dẫn video, URL RTSP, `phone:<IP>` và `droidcam:<IP>`. [Hướng dẫn kết nối camera ngoài](docs/CAMERA_NGOAI.md)
+- Bấm **L** hoặc chuột phải trong cửa sổ camera, chọn hai đầu vạch rồi chọn một điểm ở phía cầu. Bấm **R** để về vạch mặc định hoặc **Q** để thoát.
+- Nhận diện cơ cấu khách bật mặc định và dùng YOLOv8n-Pose để lấy điểm mốc cơ thể. Dùng `--no-demographics` để chỉ đếm người, `--no-origin` để bỏ ước lượng nguồn khách hoặc `--no-stream` để tắt truyền hình ảnh lên web.
+- Nếu backend đặt `SMARTCAU_API_KEY`, truyền cùng giá trị qua `--api-key` hoặc biến môi trường trong terminal camera. Công cụ giả lập đọc khóa từ biến môi trường.
+
+Để ước lượng giới tính và tuổi, hệ thống ưu tiên InsightFace qua ONNX Runtime. Đặt `genderage.onnx` trong `ai_engine/models/buffalo_s/` hoặc `~/.insightface/models/buffalo_s/`. DeepFace là phương án dự phòng và hỗ trợ ước lượng nhóm nguồn khách. Có thể chọn DeepFace bằng biến môi trường `SMARTCAU_DEMOGRAPHICS_BACKEND=deepface` trên máy camera. Nếu bộ nhận diện không khởi tạo được, camera vẫn chạy phần đếm.
+
+Nhãn **Trong nước/châu Á** và **Quốc tế** là ước lượng theo nhóm khu vực. Hồ sơ khách lưu các nhãn ước lượng, với mục **Không xác định** khi thiếu tín hiệu đủ tin cậy. Khung hình xem trực tiếp được giữ tạm trong bộ nhớ.
+
+Nếu OpenCV báo `The function is not implemented` khi mở cửa sổ camera, cài lại bản có hỗ trợ giao diện đồ họa.
+
+```powershell
+python -m pip uninstall -y opencv-python opencv-python-headless opencv-contrib-python
+python -m pip install "opencv-python>=4.9,<5"
+```
 
 ## Chạy trên nhiều máy
 
-Một máy làm **máy chủ** (`uvicorn backend.main:app --host 0.0.0.0 --port 8000`), mỗi máy camera chạy `camera_bridge.py ... --api http://<IP-máy-chủ>:8000`, các máy khác chỉ cần trình duyệt mở `http://<IP-máy-chủ>:8501` (web) hoặc `:8000/led/` (bảng LED). Kiểm tra kết nối: `python tools/kiem_tra_mang.py`. Hướng dẫn đầy đủ, mở tường lửa và kịch bản demo: [docs/TRIEN_KHAI_NHIEU_MAY.md](docs/TRIEN_KHAI_NHIEU_MAY.md).
+Trên máy chủ, cho phép các máy trong mạng truy cập backend và web.
 
-## Quy tắc đếm và cảnh báo
-
-- Khách qua vạch về phía cầu ở camera k: `num_k += 1`, `dem += 1`. Qua vạch ra ngoài: `num_k -= 1`.
-- `onbridge = num1 + num2`. Khi `onbridge ≤ 0` thì đặt lại `num1 = num2 = 0`. `dem` về 0 lúc 0 giờ mỗi ngày (giờ Việt Nam).
-- Người chỉ đi ngang phía ngoài, không qua vạch, được tính 1 lượt mặt tiền (BRULE-10).
-- **Vàng** từ 75% sức chứa (15/20). **Đỏ** khi vượt sức chứa **liên tục 15 giây**. Hết Đỏ khi ≤ 15 người liên tục 15 giây. Tin nhắn không lặp trong 3 phút (BRULE-02, BRULE-04).
-- Sự cố Đỏ được mở tự động, người trực bấm **Đã xử lý** (1 chạm), sự cố tự đóng khi hết quá tải.
-
-## Lưu ý về nhận diện
-
-- **Trong nước/châu Á – Quốc tế là ước lượng**: mô hình chỉ phân được nhóm khu vực rộng và gộp khách Việt Nam với khách Hàn, Nhật, Trung, nên không xác định được quốc tịch.
-- Kết quả có độ tin cậy dưới 75% được ghi là “Không xác định” và không tính vào tỷ lệ (BRULE-06).
-- Hệ thống không lưu ảnh hay đặc trưng khuôn mặt; khung hình chỉ xử lý trong bộ nhớ.
-
-## Bảng LED hai đầu cầu (mascot Linh Thân + Linh Khuyển)
-
-- Mỗi đầu cầu một màn hình, mở bằng Chrome hoặc Edge rồi nhấn **F11**:
-  - Đầu cầu 1: **http://127.0.0.1:8000/led/?dau=1** (Linh Thân đón khách, Linh Khuyển ra ngăn khi Đỏ, đúng bảng hướng dẫn).
-  - Đầu cầu 2: **http://127.0.0.1:8000/led/?dau=2** (đổi vai: Linh Khuyển đón khách, Linh Thân ra ngăn khi Đỏ).
-  - Xem song song cả hai: **http://127.0.0.1:8000/led/hai-man-hinh.html**.
-  Nếu máy LED khác máy chủ, thay `127.0.0.1` bằng IP của máy chủ. Trang này không cần đăng nhập.
-- Khởi động: nhân vật đón khách **đi vào** rồi vẫy tay giới thiệu. Xanh: đứng chờ, xen vẫy tay / cúi chào. Vàng: quạt và ra hiệu đi chậm mỗi 20 giây. **Lên Đỏ**: biển báo đổi ngay; nhân vật đón khách vẫy tay **đi ra**, nhân vật canh **đi vào** rồi giơ tay ngăn mỗi 18 giây. **Đỏ hạ xuống**: nhân vật canh cúi chào cảm ơn, đi ra, nhân vật đón khách đi vào lại. Câu thoại chọn ngẫu nhiên, không lặp câu vừa nói, tự đổi "Chào buổi sáng / chiều / tối".
-- **Phông nền theo giờ:** ban ngày (06:00–17:30) dùng cảnh 1, xen cảnh 4 mỗi 5 phút; ban đêm dùng cảnh 3, xen cảnh 2. Mức Vàng thêm tông ấm. Mức Đỏ chạy **tour 4 cảnh**, mỗi cảnh 30 giây, có thuyết minh. Đổi cảnh bằng hiệu ứng mờ chéo 0,8 giây đúng lúc video hết vòng lặp.
-- `&scene=3` khóa một cảnh; `&debug=1` hoặc phím **D** mở bảng giả lập Xanh / Vàng / Đỏ, +1 khách, chọn cảnh, thử từng clip (kể cả `walk_loop`) và "đi ra → đi vào".
-- Muốn đổi câu thoại, giờ ngày/đêm, thời lượng, vai nhân vật mỗi đầu cầu (`CONFIG.ends`): sửa `CONFIG` ở đầu tệp `backend/led_display/led.js`.
-- Tệp gốc: `media/mascot/`, `media/phong_nen/`.
-
-## Tính năng thông minh trên giao diện
-
-- **Sơ đồ cầu trực tiếp**: mỗi chấm là một người đang trên cầu, màu theo mức cảnh báo, kèm tốc độ vào/ra mỗi phút.
-- **Dự báo**: "cầu sẽ đầy sau bao nhiêu phút" theo xu hướng 5 phút; **thời gian chờ dự kiến** khi cầu đầy (FR-17, hiện cả trên Bảng LED); dự báo lượt vào từng giờ còn lại trong ngày (trung bình cùng thứ các tuần trước × mức đông hôm nay).
-- **Nhận định tự động**: so với cùng giờ tuần trước, khung giờ cao điểm sắp tới, cơ cấu khách, sự cố xử lý chậm…
-- **Thông báo nổi** ở mọi trang khi có sự cố Đỏ mới, cảnh báo Vàng, đoàn khách lớn hoặc mất tín hiệu camera.
-- **Biểu đồ bấm được**: ở trang *Lượt qua cầu*, bấm vào một cột ngày/tháng/năm để xem chi tiết bên trong.
-
-## Báo cáo ngày tự động và chỉ số KPI
-
-- Sau **giờ đóng cửa** (trang *Ngưỡng & giờ hoạt động*), backend tự lập báo cáo ngày, lưu lại và gửi tin tóm tắt kèm tệp **PDF** qua Telegram cho danh sách người nhận. Nếu máy tắt lúc đóng cửa, lần chạy sau sẽ lập bù ngày hôm trước. Xem và tải lại ở trang *Báo cáo định kỳ*.
-- Sáng **thứ Hai** tự gửi **báo cáo tuần** (so với tuần trước, kèm PDF); đầu ngày gửi bản tin sáng, 30 phút trước giờ đóng cửa nhắc nhập số cuống vé.
-- Trang *Báo cáo định kỳ*: chọn kỳ **Ngày / Tuần / Tháng / Năm / Tùy chọn**, lập **PDF theo thể thức văn bản hành chính** (logo in chìm, biểu đồ, tùy chỉnh mục, người lập, thủ trưởng, kiến nghị) hoặc Excel.
-- Báo cáo có các chỉ số Sprint 0: **O1** số phút vượt sức chứa, **O4** % sự cố xử lý trong 3 phút, **O5** % cảnh báo sai (người trực bấm **Báo sai** ở trang *Trực ca & sự cố*), **O8** chênh lệch lượt vào / cuống vé; kèm **biểu đồ nhiệt giờ × thứ**.
-
-## Đo độ chính xác để nghiệm thu
-
-| Script | Yêu cầu | Cách chạy |
-|---|---|---|
-| `tools/eval_counting.py` | NFR-02, O2: sai số đếm ≤ 15% (MVP), ≤ 10% (nghiệm thu) trên ≥ 3 video | `python tools/eval_counting.py --truth video_thu/dem_tay.csv` |
-| `tools/eval_demographics.py` | FR-09: giới tính ≥ 85%, nhóm tuổi ≥ 55% (±1 nhóm ≥ 85%); NFR-08: chênh lệch giữa các nhóm ≤ 5 điểm % | `python tools/eval_demographics.py --dataset fairface --images D:/fairface --labels D:/fairface/fairface_label_val.csv --limit 2000` |
-
-Tệp đếm tay cho `eval_counting.py` có các cột `video,true_in,true_out,line` (hoặc `video,second,true_count` với `--presence`). Mỗi script in bảng kết quả và lưu thêm tệp `.md`, `.csv` để dán vào báo cáo.
-
-## Kiểm thử trước khi tạo Pull Request
-
-```bash
-pytest tests/ -q
+```powershell
+python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000
 ```
+
+```powershell
+python -m streamlit run frontend/app.py --server.address 0.0.0.0 --server.port 8501
+```
+
+Trên mỗi máy camera, thêm `--api http://IP_MAY_CHU:8000` và dùng `--camera-id` tương ứng với đầu cầu. Máy xem mở `http://IP_MAY_CHU:8501` cho web và cổng `8000` cho bảng LED hoặc hình camera trực tiếp. Chạy `python tools/kiem_tra_mang.py http://IP_MAY_CHU:8000` trên máy camera để kiểm tra kết nối. [Hướng dẫn triển khai nhiều máy](docs/TRIEN_KHAI_NHIEU_MAY.md)
+
+## Vận hành
+
+- **Đếm khách.** Mỗi lượt qua vạch làm tăng hoặc giảm bộ đếm của đầu cầu tương ứng. Tổng hai bộ đếm là số người đang trên cầu. Tổng lượt vào trong ngày (`dem`) được đặt lại khi sang ngày mới theo giờ Việt Nam. AI cũng ghi nhận lượt đi ngang mặt tiền và phát hiện đoàn khách lớn.
+- **Cảnh báo.** Cả hai camera gửi lượt vào và ra, camera 1 phát mức cảnh báo Vàng và Đỏ. Với sức chứa mặc định 20 người, Vàng bắt đầu từ 15 người. Đỏ bật khi có trên 20 người liên tục 15 giây và hạ khi còn tối đa 15 người liên tục 15 giây. Quản trị viên đổi sức chứa và giờ mở cửa trong trang **Ngưỡng & giờ hoạt động**.
+- **Trực ca và Telegram.** Thêm token bot và chọn loại tin cho từng người nhận trong trang **Người nhận cảnh báo**. Bot hỗ trợ `/tinhhinh`, `/homnay`, `/suco` và nút **Đã xử lý**. Người trực cũng có thể xác nhận, đóng hoặc đánh dấu báo sai trong trang **Trực ca & sự cố**.
+- **Phân tích và báo cáo.** Web hiển thị xu hướng, dự báo thời gian chờ, cơ cấu khách, lịch sử và đối chiếu lượt vào với cuống vé. Báo cáo xuất PDF hoặc Excel theo kỳ, kèm biểu đồ nhiệt và các KPI về thời gian quá tải (O1), tốc độ xử lý sự cố (O4), tỷ lệ báo sai (O5) và chênh lệch vé (O8). Backend lập báo cáo ngày sau giờ đóng cửa, gửi báo cáo tuần vào thứ Hai và có thể đồng bộ Google Sheets sau khi lập báo cáo ngày. [Hướng dẫn từng trang và tự động hóa](docs/GHI_CHU_GIAO_DIEN.md)
+
+### Bảng LED hai đầu cầu
+
+Mở bảng LED trên trình duyệt và bấm **F11** để hiển thị toàn màn hình. Trang LED mở trực tiếp từ backend.
+
+| Màn hình | Địa chỉ |
+| --- | --- |
+| Đầu cầu 1 · Linh Thân đón khách | [Mở bảng LED đầu cầu 1](http://127.0.0.1:8000/led/?dau=1) |
+| Đầu cầu 2 · Linh Khuyển đón khách | [Mở bảng LED đầu cầu 2](http://127.0.0.1:8000/led/?dau=2) |
+| Hai đầu cầu | [Xem song song](http://127.0.0.1:8000/led/hai-man-hinh.html) |
+
+Bảng LED hiển thị số người, trạng thái và hướng dẫn song ngữ. Khi Đỏ, mascot đổi vai và bảng hiện thời gian chờ dự kiến nếu có. Thêm `&scene=3` vào URL của một đầu cầu để cố định phông nền hoặc dùng `&debug=1` hay phím **D** để thử các mức Xanh, Vàng và Đỏ. Câu thoại, cảnh nền và vai mascot được cấu hình trong [led.js](backend/led_display/led.js).
+
+## Kiểm thử và nghiệm thu AI
+
+Chạy bộ kiểm thử trong một terminal riêng. Bộ test API dùng SQLite trong bộ nhớ. Hai biến dưới đây giúp tách lần chạy khỏi `.env` và cấu hình Google Sheets của máy.
+
+```powershell
+$env:PYTHON_DOTENV_DISABLED = "1"
+$env:GOOGLE_SHEETS_CREDENTIALS_FILE = "config/pytest-no-credentials.json"
+python -m pytest tests -q
+```
+
+| Hạng mục | Tiêu chí | Công cụ |
+| --- | --- | --- |
+| Đếm lượt qua vạch · NFR-02, O2 | Sai số ≤ 15% ở MVP, ≤ 10% khi nghiệm thu, trên ít nhất 3 video có mật độ khác nhau | [eval_counting.py](tools/eval_counting.py) |
+| Ước lượng cơ cấu khách · FR-09, NFR-08 | Giới tính ≥ 85%, đúng nhóm tuổi ≥ 55%, lệch tối đa một nhóm tuổi ≥ 85%, chênh lệch giữa các nhóm ≤ 5 điểm phần trăm | [eval_demographics.py](tools/eval_demographics.py) |
+
+Lần đo sơ bộ ngày 15/11/2026 dùng `yolov8n.pt` trên **1 video**. Đếm tay được 6 lượt vào và 3 lượt ra, công cụ đếm được 5 lượt vào và 4 lượt ra, tương ứng sai số **16,7%** và **33,3%**. Lần đo này chưa đạt ngưỡng MVP. Camera khi bật nhận diện mặc định dùng `yolov8n-pose.pt` và cấu hình BoT-SORT riêng.
+
+Để đo lại, tạo CSV đếm tay với các cột `video,true_in,true_out,line`. Đường dẫn video tương đối tính từ thư mục chứa CSV, đường dẫn tệp vạch tương đối tính từ thư mục gốc dự án. Để trống `line` để dùng vạch mặc định.
+
+```powershell
+python tools/eval_counting.py --truth video_thu/dem_tay.csv
+python tools/eval_demographics.py --dataset fairface --images D:/fairface --labels D:/fairface/fairface_label_val.csv --limit 2000
+```
+
+Dùng `--presence` với CSV `video,second,true_count` để đo số người trong khung hình tại từng thời điểm. Hai công cụ xuất báo cáo `.md` và `.csv`. [Quy trình đo và cấu hình AI](docs/AI_CAI_THIEN.md)
+
+## Cấu trúc mã nguồn
+
+| Thư mục | Vai trò |
+| --- | --- |
+| [`ai_engine/`](ai_engine/) | Xử lý video, theo dõi người, đếm qua vạch, tính cảnh báo và ước lượng cơ cấu khách. |
+| [`backend/`](backend/) | API FastAPI, dữ liệu qua SQLAlchemy, nghiệp vụ, bot Telegram, lịch báo cáo và [bảng LED](backend/led_display/). |
+| [`frontend/`](frontend/) | Web Streamlit theo vai trò cho người trực, quản lý và quản trị viên. |
+| [`tools/`](tools/) và [`tests/`](tests/) | Công cụ demo, kiểm tra mạng, đánh giá AI, chuyển dữ liệu và bộ kiểm thử tự động. |
+| [`sample_data/`](sample_data/), [`media/`](media/) và [`docs/`](docs/) | Dữ liệu demo, video mascot và phông nền, tài liệu thiết kế và triển khai. |
+
+Tra cứu thêm trong [tổng quan mã nguồn](docs/TONG_QUAN_MA_NGUON.md), [hợp đồng API](docs/API_CONTRACT.md) và [phân công 7 module](docs/PHAN_CONG.md).

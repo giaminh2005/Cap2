@@ -1,0 +1,4 @@
+video,true_in,true_out,line
+../video/thua.mp4,2,0,sample_data/eval_counting_line.json
+../video/vua.mp4,4,4,sample_data/eval_counting_line.json
+../video/dong.mp4,6,4,sample_data/eval_counting_line.json

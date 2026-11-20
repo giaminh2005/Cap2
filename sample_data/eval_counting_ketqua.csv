@@ -1,0 +1,4 @@
+﻿video,true_in,true_out,pred_in,pred_out
+../video/thua.mp4,2,0,2,0
+../video/vua.mp4,4,4,3,3
+../video/dong.mp4,6,4,5,6
